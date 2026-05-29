@@ -974,6 +974,18 @@ export class TUI extends Container {
 		// Render all components to get new lines
 		let newLines = this.render(width);
 
+		// Truncate main content to leave space for sidebar overlay
+		if (this.sidebarWidth > 0) {
+			const mainWidth = width - this.sidebarWidth;
+			newLines = newLines.map(line => {
+				const vw = visibleWidth(line);
+				if (vw > mainWidth) {
+					return sliceByColumn(line, 0, mainWidth, true);
+				}
+				return line + " ".repeat(Math.max(0, mainWidth - vw));
+			});
+		}
+
 		// Composite overlays into the rendered lines (before differential compare)
 		if (this.overlayStack.length > 0) {
 			newLines = this.compositeOverlays(newLines, width, height);
