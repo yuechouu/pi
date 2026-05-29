@@ -209,9 +209,10 @@ function rebuildBashResultRenderComponent(
 	}
 
 	if (output) {
+		// Crush-style: prefix each line with │
 		const styledOutput = output
 			.split("\n")
-			.map((line) => theme.fg("toolOutput", line))
+			.map((line) => theme.fg("muted", "│ ") + theme.fg("toolOutput", line))
 			.join("\n");
 
 		if (options.expanded) {
@@ -409,7 +410,12 @@ export function createBashToolDefinition(
 				state.endedAt = undefined;
 			}
 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			text.setText(formatBashCall(args));
+			// Crush-style: ● Bash <command>
+			const command = str(args?.command) ?? "...";
+			const icon = context.isError ? theme.fg("error", "×") : theme.fg("success", "●");
+			const label = theme.fg("toolTitle", theme.bold("Bash"));
+			const cmd = theme.fg("toolOutput", command);
+			text.setText(`${icon} ${label} ${cmd}`);
 			return text;
 		},
 		renderResult(result, options, _theme, context) {
@@ -424,6 +430,17 @@ export function createBashToolDefinition(
 					state.interval = undefined;
 				}
 			}
+
+			// Update icon to success/error
+			const callText = (context.lastComponent as Text | undefined);
+			if (callText && !options.isPartial) {
+				const command = str((context as any).args?.command) ?? "...";
+				const icon = context.isError ? theme.fg("error", "×") : theme.fg("success", "✓");
+				const label = theme.fg("toolTitle", theme.bold("Bash"));
+				const cmd = theme.fg("toolOutput", command);
+				callText.setText(`${icon} ${label} ${cmd}`);
+			}
+
 			const component =
 				(context.lastComponent as BashResultRenderComponent | undefined) ?? new BashResultRenderComponent();
 			rebuildBashResultRenderComponent(

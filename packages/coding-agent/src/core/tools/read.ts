@@ -76,7 +76,8 @@ function formatReadCall(args: ReadRenderArgs | undefined, theme: Theme): string 
 	const path = rawPath !== null ? shortenPath(rawPath) : null;
 	const invalidArg = invalidArgText(theme);
 	const pathDisplay = path === null ? invalidArg : path ? theme.fg("accent", path) : theme.fg("toolOutput", "...");
-	return `${theme.fg("toolTitle", theme.bold("read"))} ${pathDisplay}${formatReadLineRange(args, theme)}`;
+	// Crush-style: ● Read <path>
+	return `${theme.fg("success", "●")} ${theme.fg("toolTitle", theme.bold("Read"))} ${pathDisplay}${formatReadLineRange(args, theme)}`;
 }
 
 function trimTrailingEmptyLines(lines: string[]): string[] {
@@ -155,8 +156,10 @@ function formatCompactReadCall(
 		);
 	}
 
+	// Crush-style: ● Read <kind> <label>
 	return (
-		theme.fg("toolTitle", theme.bold(`read ${classification.kind}`)) +
+		theme.fg("success", "●") + " " +
+		theme.fg("toolTitle", theme.bold(`Read ${classification.kind}`)) +
 		" " +
 		theme.fg("accent", classification.label) +
 		formatReadLineRange(args, theme) +

@@ -199,7 +199,8 @@ function formatEditCall(
 	const rawPath = str(args?.file_path ?? args?.path);
 	const path = rawPath !== null ? shortenPath(rawPath) : null;
 	const pathDisplay = path === null ? invalidArg : path ? theme.fg("accent", path) : theme.fg("toolOutput", "...");
-	return `${theme.fg("toolTitle", theme.bold("edit"))} ${pathDisplay}`;
+	// Crush-style: ● Edit <path>
+	return `${theme.fg("success", "●")} ${theme.fg("toolTitle", theme.bold("Edit"))} ${pathDisplay}`;
 }
 
 function formatEditResult(
@@ -236,16 +237,8 @@ function getEditHeaderBg(
 	settledError: boolean | undefined,
 	theme: typeof import("../../modes/interactive/theme/theme.ts").theme,
 ): (text: string) => string {
-	if (preview) {
-		if ("error" in preview) {
-			return (text: string) => theme.bg("toolErrorBg", text);
-		}
-		return (text: string) => theme.bg("toolSuccessBg", text);
-	}
-	if (settledError) {
-		return (text: string) => theme.bg("toolErrorBg", text);
-	}
-	return (text: string) => theme.bg("toolPendingBg", text);
+	// Crush-style: no colored background, use icons instead
+	return (text: string) => text;
 }
 
 function buildEditCallComponent(
@@ -255,16 +248,34 @@ function buildEditCallComponent(
 ): EditCallRenderComponent {
 	component.setBgFn(getEditHeaderBg(component.preview, component.settledError, theme));
 	component.clear();
-	component.addChild(new Text(formatEditCall(args, theme), 0, 0));
+
+	// Crush-style header with icon
+	const invalidArg = invalidArgText(theme);
+	const rawPath = str(args?.file_path ?? args?.path);
+	const path = rawPath !== null ? shortenPath(rawPath) : null;
+	const pathDisplay = path === null ? invalidArg : path ? theme.fg("accent", path) : theme.fg("toolOutput", "...");
+
+	let icon: string;
+	if (component.settledError || (component.preview && "error" in component.preview)) {
+		icon = theme.fg("error", "×");
+	} else if (component.preview && !("error" in component.preview)) {
+		icon = theme.fg("success", "✓");
+	} else {
+		icon = theme.fg("success", "●");
+	}
+
+	component.addChild(new Text(`${icon} ${theme.fg("toolTitle", theme.bold("Edit"))} ${pathDisplay}`, 0, 0));
 
 	if (!component.preview) {
 		return component;
 	}
 
-	const body =
-		"error" in component.preview ? theme.fg("error", component.preview.error) : renderDiff(component.preview.diff);
-	component.addChild(new Spacer(1));
-	component.addChild(new Text(body, 0, 0));
+	if ("error" in component.preview) {
+		component.addChild(new Text(theme.fg("muted", "│ ") + theme.fg("error", component.preview.error), 0, 0));
+	} else {
+		component.addChild(new Spacer(1));
+		component.addChild(new Text(renderDiff(component.preview.diff), 0, 0));
+	}
 	return component;
 }
 
