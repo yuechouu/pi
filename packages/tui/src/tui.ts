@@ -976,18 +976,20 @@ export class TUI extends Container {
 
 		// Sidebar: truncate main content and render sidebar on the right
 		if (this.sidebarWidth > 0 && this.sidebarComponent) {
-			const mainWidth = width - this.sidebarWidth;
-			const sidebarLines = this.sidebarComponent.render(this.sidebarWidth);
+			const separator = "\x1b[90m│\x1b[0m"; // dim │ separator
+			const mainWidth = width - this.sidebarWidth - 1; // -1 for separator
+			const sidebarLines = this.sidebarComponent.render(this.sidebarWidth - 1);
 			const maxLines = Math.max(newLines.length, sidebarLines.length, height);
 			const padded: string[] = [];
 			for (let i = 0; i < maxLines; i++) {
 				const mainLine = i < newLines.length ? newLines[i] : "";
 				const sideLine = i < sidebarLines.length ? sidebarLines[i] : "";
-				// Truncate main content to mainWidth, then append sidebar
-				const truncatedMain = visibleWidth(mainLine) > mainWidth
-					? sliceByColumn(mainLine, 0, mainWidth, true)
-					: mainLine + " ".repeat(Math.max(0, mainWidth - visibleWidth(mainLine)));
-				padded.push(truncatedMain + sideLine);
+				// Truncate main content to mainWidth, then append separator + sidebar
+				const mainW = Math.max(1, mainWidth);
+				const truncatedMain = visibleWidth(mainLine) > mainW
+					? sliceByColumn(mainLine, 0, mainW, true)
+					: mainLine + " ".repeat(Math.max(0, mainW - visibleWidth(mainLine)));
+				padded.push(truncatedMain + separator + sideLine);
 			}
 			newLines = padded;
 		}
