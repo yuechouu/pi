@@ -226,11 +226,8 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private updateDisplay(): void {
-		const bgFn = this.isPartial
-			? (text: string) => theme.bg("toolPendingBg", text)
-			: this.result?.isError
-				? (text: string) => theme.bg("toolErrorBg", text)
-				: (text: string) => theme.bg("toolSuccessBg", text);
+		// Crush-style: no colored background, use icons for status
+		const bgFn = (text: string) => text;
 
 		let hasContent = false;
 		this.hideComponent = false;
