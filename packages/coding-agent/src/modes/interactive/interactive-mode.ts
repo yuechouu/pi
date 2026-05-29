@@ -1919,6 +1919,32 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
+	private sidebarOverlayHandle: { hide(): void; setHidden(hidden: boolean): void } | undefined;
+
+	private setExtensionSidebar(
+		factory: ((tui: TUI, theme: Theme) => Component & { dispose?(): void }) | undefined,
+		options?: { width?: number; anchor?: string },
+	): void {
+		// Remove existing sidebar
+		if (this.sidebarOverlayHandle) {
+			this.sidebarOverlayHandle.hide();
+			this.sidebarOverlayHandle = undefined;
+		}
+
+		if (!factory) return;
+
+		const width = options?.width ?? 30;
+		const component = factory(this.ui, theme);
+
+		this.sidebarOverlayHandle = this.ui.showOverlay(component, {
+			anchor: (options?.anchor as any) ?? "right-center",
+			width,
+			maxHeight: "90%",
+			nonCapturing: true,
+			margin: { top: 1, right: 1, bottom: 1, left: 0 },
+		});
+	}
+
 	/**
 	 * Set a custom header component, or restore the built-in header.
 	 */
@@ -2004,6 +2030,7 @@ export class InteractiveMode {
 			setWidget: (key, content, options) => this.setExtensionWidget(key, content, options),
 			setFooter: (factory) => this.setExtensionFooter(factory),
 			setHeader: (factory) => this.setExtensionHeader(factory),
+			setSidebar: (factory, options) => this.setExtensionSidebar(factory, options),
 			setTitle: (title) => this.ui.terminal.setTitle(title),
 			custom: (factory, options) => this.showExtensionCustom(factory, options),
 			pasteToEditor: (text) => this.editor.handleInput(`\x1b[200~${text}\x1b[201~`),
