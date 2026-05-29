@@ -412,7 +412,7 @@ export function createBashToolDefinition(
 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
 			// Crush-style: ● Bash <command>
 			const command = str(args?.command) ?? "...";
-			const icon = context.isError ? theme.fg("error", "×") : theme.fg("success", "●");
+			const icon = context.isError ? theme.fg("error", "×") : theme.fg("dim", "●");
 			const label = theme.fg("toolTitle", theme.bold("Bash"));
 			const cmd = theme.fg("toolOutput", command);
 			text.setText(`${icon} ${label} ${cmd}`);

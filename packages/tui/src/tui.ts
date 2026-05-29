@@ -270,6 +270,11 @@ export class TUI extends Container {
 		focusOrder: number;
 	}[] = [];
 
+	/** Sidebar width in columns. When set, main content is truncated and sidebar renders on the right. */
+	public sidebarWidth = 0;
+	/** Sidebar component rendered on the right side. */
+	public sidebarComponent: Component | null = null;
+
 	constructor(terminal: Terminal, showHardwareCursor?: boolean) {
 		super();
 		this.terminal = terminal;
@@ -968,6 +973,24 @@ export class TUI extends Container {
 
 		// Render all components to get new lines
 		let newLines = this.render(width);
+
+		// Sidebar: truncate main content and render sidebar on the right
+		if (this.sidebarWidth > 0 && this.sidebarComponent) {
+			const mainWidth = width - this.sidebarWidth;
+			const sidebarLines = this.sidebarComponent.render(this.sidebarWidth);
+			const maxLines = Math.max(newLines.length, sidebarLines.length, height);
+			const padded: string[] = [];
+			for (let i = 0; i < maxLines; i++) {
+				const mainLine = i < newLines.length ? newLines[i] : "";
+				const sideLine = i < sidebarLines.length ? sidebarLines[i] : "";
+				// Truncate main content to mainWidth, then append sidebar
+				const truncatedMain = visibleWidth(mainLine) > mainWidth
+					? sliceByColumn(mainLine, 0, mainWidth, true)
+					: mainLine + " ".repeat(Math.max(0, mainWidth - visibleWidth(mainLine)));
+				padded.push(truncatedMain + sideLine);
+			}
+			newLines = padded;
+		}
 
 		// Composite overlays into the rendered lines (before differential compare)
 		if (this.overlayStack.length > 0) {
