@@ -1933,10 +1933,16 @@ export class InteractiveMode {
 		this.ui.sidebarWidth = 0;
 		this.ui.sidebarComponent = null;
 
-		if (!factory) return;
+		if (!factory) {
+			this.ui.requestRender();
+			return;
+		}
 
 		const width = options?.width ?? 32;
 		const component = factory(this.ui, theme);
+
+		// Set sidebarWidth so main content truncates to leave space
+		this.ui.sidebarWidth = width;
 
 		// Overlay at top-right, non-capturing, stays fixed on screen
 		this.sidebarOverlay = this.ui.showOverlay(component, {
