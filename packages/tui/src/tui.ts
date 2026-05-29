@@ -974,26 +974,6 @@ export class TUI extends Container {
 		// Render all components to get new lines
 		let newLines = this.render(width);
 
-		// Sidebar: render inline on the right side, scrolls with content
-		if (this.sidebarWidth > 0 && this.sidebarComponent) {
-			const separator = "\x1b[90m│\x1b[0m";
-			const mainWidth = width - this.sidebarWidth - 1;
-			const maxSidebarHeight = Math.min(height, 40);
-			const sidebarLines = this.sidebarComponent.render(this.sidebarWidth - 1).slice(0, maxSidebarHeight);
-			const maxLines = Math.max(newLines.length, sidebarLines.length);
-			const padded: string[] = [];
-			for (let i = 0; i < maxLines; i++) {
-				const mainLine = i < newLines.length ? newLines[i] : "";
-				const sideLine = i < sidebarLines.length ? sidebarLines[i] : "";
-				const mainW = Math.max(1, mainWidth);
-				const truncatedMain = visibleWidth(mainLine) > mainW
-					? sliceByColumn(mainLine, 0, mainW, true)
-					: mainLine + " ".repeat(Math.max(0, mainW - visibleWidth(mainLine)));
-				padded.push(truncatedMain + separator + sideLine);
-			}
-			newLines = padded;
-		}
-
 		// Composite overlays into the rendered lines (before differential compare)
 		if (this.overlayStack.length > 0) {
 			newLines = this.compositeOverlays(newLines, width, height);

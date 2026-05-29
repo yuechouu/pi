@@ -1919,23 +1919,32 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
+	private sidebarOverlay: { hide(): void; setHidden(h: boolean): void } | undefined;
+
 	private setExtensionSidebar(
 		factory: ((tui: TUI, theme: Theme) => Component & { dispose?(): void }) | undefined,
 		options?: { width?: number },
 	): void {
-		if (!factory) {
-			this.ui.sidebarWidth = 0;
-			this.ui.sidebarComponent = null;
-			this.ui.requestRender();
-			return;
+		// Remove existing
+		if (this.sidebarOverlay) {
+			this.sidebarOverlay.hide();
+			this.sidebarOverlay = undefined;
 		}
+		this.ui.sidebarWidth = 0;
+		this.ui.sidebarComponent = null;
+
+		if (!factory) return;
 
 		const width = options?.width ?? 32;
 		const component = factory(this.ui, theme);
 
-		this.ui.sidebarWidth = width;
-		this.ui.sidebarComponent = component;
-		this.ui.requestRender();
+		// Overlay at top-right, non-capturing, stays fixed on screen
+		this.sidebarOverlay = this.ui.showOverlay(component, {
+			anchor: "top-right",
+			width,
+			nonCapturing: true,
+			margin: 0,
+		});
 	}
 
 	/**
