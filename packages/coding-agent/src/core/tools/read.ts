@@ -71,11 +71,9 @@ function formatReadLineRange(args: ReadRenderArgs | undefined, theme: Theme): st
 	return theme.fg("warning", `:${startLine}${endLine ? `-${endLine}` : ""}`);
 }
 
-function formatReadCall(args: ReadRenderArgs | undefined, theme: Theme): string {
+function formatReadCall(args: ReadRenderArgs | undefined, theme: Theme, cwd: string): string {
 	const rawPath = str(args?.file_path ?? args?.path);
-	const path = rawPath !== null ? shortenPath(rawPath) : null;
-	const invalidArg = invalidArgText(theme);
-	const pathDisplay = path === null ? invalidArg : path ? theme.fg("accent", path) : theme.fg("toolOutput", "...");
+	const pathDisplay = renderToolPath(rawPath, theme, cwd);
 	// Crush-style: ● Read <path>
 	return `${theme.fg("success", "●")} ${theme.fg("toolTitle", theme.bold("Read"))} ${pathDisplay}${formatReadLineRange(args, theme)}`;
 }

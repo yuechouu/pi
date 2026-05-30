@@ -195,11 +195,10 @@ function getRenderablePreviewInput(args: RenderableEditArgs | undefined): { path
 function formatEditCall(
 	args: RenderableEditArgs | undefined,
 	theme: typeof import("../../modes/interactive/theme/theme.ts").theme,
+	cwd: string,
 ): string {
-	const invalidArg = invalidArgText(theme);
 	const rawPath = str(args?.file_path ?? args?.path);
-	const path = rawPath !== null ? shortenPath(rawPath) : null;
-	const pathDisplay = path === null ? invalidArg : path ? theme.fg("accent", path) : theme.fg("toolOutput", "...");
+	const pathDisplay = renderToolPath(rawPath, theme, cwd);
 	// Crush-style: ● Edit <path>
 	return `${theme.fg("success", "●")} ${theme.fg("toolTitle", theme.bold("Edit"))} ${pathDisplay}`;
 }
@@ -252,10 +251,8 @@ function buildEditCallComponent(
 	component.clear();
 
 	// Crush-style header with icon
-	const invalidArg = invalidArgText(theme);
 	const rawPath = str(args?.file_path ?? args?.path);
-	const path = rawPath !== null ? shortenPath(rawPath) : null;
-	const pathDisplay = path === null ? invalidArg : path ? theme.fg("accent", path) : theme.fg("toolOutput", "...");
+	const pathDisplay = renderToolPath(rawPath, theme, cwd);
 
 	let icon: string;
 	if (component.settledError || (component.preview && "error" in component.preview)) {

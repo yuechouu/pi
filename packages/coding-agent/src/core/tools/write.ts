@@ -137,10 +137,9 @@ function formatWriteCall(
 ): string {
 	const rawPath = str(args?.file_path ?? args?.path);
 	const fileContent = str(args?.content);
-	const path = rawPath !== null ? shortenPath(rawPath) : null;
-	const invalidArg = invalidArgText(theme);
+	const pathDisplay = renderToolPath(rawPath, theme, cwd);
 	// Crush-style: ● Write <path>
-	let text = `${theme.fg("success", "●")} ${theme.fg("toolTitle", theme.bold("Write"))} ${path === null ? invalidArg : path ? theme.fg("accent", path) : theme.fg("toolOutput", "...")}`;
+	let text = `${theme.fg("success", "●")} ${theme.fg("toolTitle", theme.bold("Write"))} ${pathDisplay}`;
 
 	if (fileContent === null) {
 		text += `\n\n${theme.fg("error", "[invalid content arg - expected string]")}`;
