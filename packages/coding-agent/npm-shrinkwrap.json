@@ -1,11 +1,11 @@
 {
-	"name": "@yuechouu/pi-coding-agent",
+	"name": "pi-coding-agent-yuechouu",
 	"version": "1.0.0",
 	"lockfileVersion": 3,
 	"requires": true,
 	"packages": {
 		"": {
-			"name": "@yuechouu/pi-coding-agent",
+			"name": "pi-coding-agent-yuechouu",
 			"version": "1.0.0",
 			"license": "MIT",
 			"dependencies": {
