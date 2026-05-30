@@ -748,7 +748,7 @@ export async function main(args: string[], options?: MainOptions) {
 		await runRpcMode(runtime);
 	} else if (appMode === "web") {
 		printTimings();
-		await runWebMode(runtime, { port: parsed.port });
+		await runWebMode(runtime, { port: parsed.port, register: parsed.register });
 	} else if (appMode === "interactive") {
 		const interactiveMode = new InteractiveMode(runtime, {
 			migratedProviders,

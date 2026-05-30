@@ -47,6 +47,7 @@ export interface Args {
 	offline?: boolean;
 	verbose?: boolean;
 	port?: number;
+	register?: string;
 	messages: string[];
 	fileArgs: string[];
 	/** Unknown flags (potentially extension flags) - map of flag name to value */
@@ -177,6 +178,8 @@ export function parseArgs(args: string[]): Args {
 			}
 		} else if (arg === "--verbose") {
 			result.verbose = true;
+		} else if (arg === "--register" && i + 1 < args.length) {
+			result.register = args[++i];
 		} else if (arg === "--port" && i + 1 < args.length) {
 			const portStr = args[++i];
 			const portNum = parseInt(portStr, 10);
@@ -246,6 +249,7 @@ ${chalk.bold("Options:")}
   --append-system-prompt <text>  Append text or file contents to the system prompt (can be used multiple times)
   --mode <mode>                  Output mode: text (default), json, rpc, or web
   --port <port>                  Port for web mode (default: 3210)
+  --register <host:port>         Register with a dashboard on startup
   --print, -p                    Non-interactive mode: process prompt and exit
   --continue, -c                 Continue previous session
   --resume, -r                   Select a session to resume

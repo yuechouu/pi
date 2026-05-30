@@ -37,6 +37,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export interface WebModeOptions {
 	port?: number;
+	register?: string;  // dashboard host:port to register with
 }
 
 /**
@@ -58,6 +59,28 @@ export async function runWebMode(
 
 	// Connected WebSocket clients
 	const clients = new Set<WebSocket>();
+
+	// Known agents (registered via /api/register or --register flag)
+	const knownAgents: Array<{ host: string; name: string; cwd: string; port?: number }> = [];
+
+	// Register with a dashboard if --register is specified
+	const registerWithDashboard = async (dashboardUrl: string) => {
+		try {
+			const agentHost = `localhost:${port}`;
+			const resp = await fetch(`http://${dashboardUrl}/api/register`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ host: agentHost, name: `Agent :${port}`, cwd: process.cwd(), port }),
+			});
+			if (resp.ok) {
+				console.log(`[Web] Registered with dashboard at ${dashboardUrl}`);
+			} else {
+				console.error(`[Web] Failed to register with dashboard: ${resp.status}`);
+			}
+		} catch (err) {
+			console.error(`[Web] Could not reach dashboard at ${dashboardUrl}: ${err instanceof Error ? err.message : err}`);
+		}
+	};
 
 	const broadcast = (obj: RpcResponse | RpcExtensionUIRequest | object) => {
 		const data = JSON.stringify(obj);
@@ -495,6 +518,43 @@ export async function runWebMode(
 			return;
 		}
 
+		// REST API: POST /api/register — agent self-registration
+		if (url.pathname === "/api/register" && req.method === "POST") {
+			let body = "";
+			req.on("data", (chunk) => { body += chunk; });
+			req.on("end", () => {
+				try {
+					const data = JSON.parse(body);
+					const agent = { host: data.host, name: data.name || data.host, cwd: data.cwd || "", port: data.port };
+					if (!agent.host) {
+						res.writeHead(400, { "Content-Type": "application/json" });
+						res.end(JSON.stringify({ error: "Missing host" }));
+						return;
+					}
+					// Add to known agents if not already present
+					if (!knownAgents.find((a) => a.host === agent.host)) {
+						knownAgents.push(agent);
+						console.log(`[Web] Agent registered: ${agent.name} (${agent.host})`);
+						// Broadcast to all connected dashboard clients
+						broadcast({ type: "agent_registered", agent });
+					}
+					res.writeHead(200, { "Content-Type": "application/json" });
+					res.end(JSON.stringify({ ok: true }));
+				} catch {
+					res.writeHead(400, { "Content-Type": "application/json" });
+					res.end(JSON.stringify({ error: "Invalid JSON" }));
+				}
+			});
+			return;
+		}
+
+		// REST API: GET /api/agents — list registered agents
+		if (url.pathname === "/api/agents" && req.method === "GET") {
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ agents: knownAgents }));
+			return;
+		}
+
 		// REST API: GET /api/files?path=
 		if (url.pathname === "/api/files" && req.method === "GET") {
 			try {
@@ -699,10 +759,15 @@ export async function runWebMode(
 
 	// Start server
 	return new Promise<never>((resolve, reject) => {
-		server.listen(port, "127.0.0.1", () => {
+		server.listen(port, "127.0.0.1", async () => {
 			console.log(`\n  Pi Agent Web UI running at:\n`);
 			console.log(`  http://localhost:${port}\n`);
 			console.log(`  Press Ctrl+C to stop.\n`);
+
+			// Register with dashboard if specified
+			if (options.register) {
+				await registerWithDashboard(options.register);
+			}
 
 			// Handle shutdown
 			const shutdown = async () => {

@@ -1044,9 +1044,24 @@ function S(host) {
 // ========================================================================
 function loadServers() {
   try { G.servers = JSON.parse(localStorage.getItem('pi-servers') || '[]'); } catch { G.servers = []; }
-  if (G.servers.length === 0) G.servers = [{ name: 'Default', host: location.host }];
+  if (G.servers.length === 0) G.servers = [{ name: 'Dashboard', host: location.host }];
   G.active = location.hash.slice(1) || G.servers[0].host;
   if (!G.servers.find(s => s.host === G.active)) G.active = G.servers[0].host;
+
+  // Fetch registered agents from dashboard
+  fetchApi('/api/agents').then(data => {
+    if (data.agents) {
+      for (const a of data.agents) {
+        if (a.host && !G.servers.find(s => s.host === a.host)) {
+          G.servers.push({ name: a.name || a.host, host: a.host });
+        }
+      }
+      saveServers();
+      renderTabs();
+      connectAll();
+    }
+  }).catch(() => {});
+
   renderTabs();
   connectAll();
 }
@@ -1164,6 +1179,19 @@ function handleMessage(host, msg) {
         send({ type: 'get_messages' }, host);
         if (host === G.active) switchPage('chat');
       } else if (host === G.active) alert('Switch failed: ' + msg.error);
+    }
+    return;
+  }
+
+  // Agent registered event from dashboard
+  if (msg.type === 'agent_registered') {
+    const a = msg.agent;
+    if (a?.host && !G.servers.find(s => s.host === a.host)) {
+      G.servers.push({ name: a.name || a.host, host: a.host });
+      saveServers();
+      renderTabs();
+      connectTo(a.host);
+      log('info', `Agent registered: ${a.name} (${a.host})`);
     }
     return;
   }
