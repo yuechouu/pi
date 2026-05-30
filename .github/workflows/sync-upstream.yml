@@ -1,0 +1,62 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/earendil-works/pi.git || true
+          git fetch upstream main
+
+      - name: Try merge upstream
+        id: merge
+        run: |
+          git checkout main
+          if git merge upstream/main --no-edit; then
+            echo "conflict=false" >> $GITHUB_OUTPUT
+          else
+            # Get list of conflicting files
+            CONFLICT_FILES=$(git diff --name-only --diff-filter=U | tr '\n' ', ' | sed 's/,$//')
+            echo "conflict_files=$CONFLICT_FILES" >> $GITHUB_OUTPUT
+            git merge --abort
+            echo "conflict=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push if no conflict
+        if: steps.merge.outputs.conflict == 'false'
+        run: git push origin main
+
+      - name: Create PR if conflict
+        if: steps.merge.outputs.conflict == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "merge: sync with upstream (conflicts detected)"
+          title: "⚠️ Upstream sync has conflicts"
+          body: |
+            Upstream merge detected conflicts that need manual resolution.
+
+            **Files with conflicts:**
+            ```
+            ${{ steps.merge.outputs.conflict_files }}
+            ```
+
+            Please resolve conflicts and merge this PR.
+          branch: upstream-sync-conflict
+          delete-branch: true
