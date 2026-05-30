@@ -786,6 +786,17 @@ body::before {
         Dashboard
       </div>
     </nav>
+    <!-- Server Selector -->
+    <div style="padding: 8px 12px; border-top: 1px solid var(--border);">
+      <div style="font-size: 11px; color: var(--fg-muted); margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+        <span>Servers</span>
+        <button class="btn-icon" onclick="showAddServer()" title="Add server" style="padding: 2px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+      </div>
+      <div id="serverList" style="display: flex; flex-direction: column; gap: 2px;"></div>
+    </div>
+
     <div class="sidebar-status">
       <div style="margin-bottom: 6px;">
         <span class="status-dot connecting" id="statusDot"></span>
@@ -959,26 +970,119 @@ const state = {
   models: [],
   logs: [],
   logFilter: 'all',
-  toolExecutions: new Map(), // toolCallId -> { name, label, status, body }
-  streamingMessages: new Map(), // messageId -> { text, thinking }
+  toolExecutions: new Map(),
+  streamingMessages: new Map(),
   currentStreamId: null,
   msgCounter: 0,
+  servers: [],
+  activeServer: null,
 };
 
 // ========================================================================
 // WebSocket
 // ========================================================================
+// ========================================================================
+// Server Management
+// ========================================================================
+function loadServers() {
+  try {
+    const saved = localStorage.getItem('pi-servers');
+    state.servers = saved ? JSON.parse(saved) : [];
+  } catch { state.servers = []; }
+
+  // Add current page host as default if no servers saved
+  if (state.servers.length === 0) {
+    state.servers = [{ name: 'Default', host: location.host }];
+  }
+
+  // Set active server from URL hash or first server
+  const hashServer = location.hash.slice(1);
+  if (hashServer && state.servers.find(s => s.host === hashServer)) {
+    state.activeServer = hashServer;
+  } else {
+    state.activeServer = state.servers[0].host;
+  }
+
+  renderServerList();
+}
+
+function saveServers() {
+  localStorage.setItem('pi-servers', JSON.stringify(state.servers));
+}
+
+function renderServerList() {
+  const container = document.getElementById('serverList');
+  container.innerHTML = state.servers.map(s => {
+    const isActive = s.host === state.activeServer;
+    return `
+      <div class="nav-item ${isActive ? 'active' : ''}" style="padding: 5px 8px; font-size: 12px; cursor: pointer;" onclick="switchServer('${s.host}')">
+        <span class="status-dot ${isActive && state.connected ? '' : isActive ? 'disconnected' : ''}" style="width: 6px; height: 6px;"></span>
+        <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(s.name || s.host)}</span>
+        ${state.servers.length > 1 ? `<button class="btn-icon" onclick="event.stopPropagation(); removeServer('${s.host}')" style="padding: 1px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function switchServer(host) {
+  if (host === state.activeServer && state.connected) return;
+  state.activeServer = host;
+  location.hash = host;
+  // Clear state
+  state.messages = [];
+  state.sessionState = null;
+  state.streamingMessages.clear();
+  state.toolExecutions.clear();
+  document.getElementById('chatMessages').innerHTML = '';
+  // Reconnect
+  if (state.ws) { state.ws.close(); state.ws = null; }
+  connect();
+  renderServerList();
+}
+
+function showAddServer() {
+  const input = prompt('Enter server host:port (e.g. localhost:3210)', 'localhost:3210');
+  if (!input) return;
+  const host = input.trim();
+  if (!host) return;
+  if (state.servers.find(s => s.host === host)) {
+    alert('Server already exists');
+    return;
+  }
+  const name = prompt('Server name (optional)', '') || host;
+  state.servers.push({ name, host });
+  saveServers();
+  renderServerList();
+  switchServer(host);
+}
+
+function removeServer(host) {
+  state.servers = state.servers.filter(s => s.host !== host);
+  saveServers();
+  if (state.activeServer === host) {
+    state.activeServer = state.servers[0]?.host || null;
+    if (state.activeServer) switchServer(state.activeServer);
+  }
+  renderServerList();
+}
+
+// ========================================================================
+// WebSocket Connection
+// ========================================================================
 function connect() {
+  if (!state.activeServer) return;
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const url = `${proto}//${location.host}/ws`;
+  const url = `${proto}//${state.activeServer}/ws`;
   console.log('[PiAgent] Connecting to', url);
+  updateStatus(false, 'Connecting...');
+
   const ws = new WebSocket(url);
 
   ws.onopen = () => {
     state.connected = true;
     state.ws = ws;
     updateStatus(true);
-    log('info', 'Connected to server');
+    log('info', `Connected to ${state.activeServer}`);
     console.log('[PiAgent] WebSocket connected');
   };
 
@@ -986,13 +1090,16 @@ function connect() {
     state.connected = false;
     state.ws = null;
     updateStatus(false);
-    log('warn', `Disconnected (code=${evt.code}). Reconnecting in 2s...`);
+    log('warn', `Disconnected from ${state.activeServer} (code=${evt.code})`);
     console.log('[PiAgent] WebSocket closed', evt.code, evt.reason);
-    setTimeout(connect, 2000);
+    // Auto-reconnect if still the active server
+    setTimeout(() => {
+      if (state.ws === null && state.activeServer) connect();
+    }, 3000);
   };
 
   ws.onerror = (evt) => {
-    log('error', 'WebSocket error');
+    log('error', `WebSocket error connecting to ${state.activeServer}`);
     console.error('[PiAgent] WebSocket error', evt);
   };
 
@@ -1368,20 +1475,21 @@ function escapeHtml(text) {
 // ========================================================================
 // UI Helpers
 // ========================================================================
-function updateStatus(connected) {
+function updateStatus(connected, text) {
   const dot = document.getElementById('statusDot');
-  const text = document.getElementById('statusText');
+  const textEl = document.getElementById('statusText');
   dot.className = connected ? 'status-dot' : 'status-dot disconnected';
-  text.textContent = connected ? 'Connected' : 'Disconnected';
+  textEl.textContent = text || (connected ? 'Connected' : 'Disconnected');
 }
 
 function updateChatTitle() {
   const el = document.getElementById('chatTitle');
-  if (state.sessionState?.sessionName) {
-    el.textContent = `Chat — ${state.sessionState.sessionName}`;
-  } else if (state.sessionState?.model) {
-    el.textContent = `Chat — ${state.sessionState.model.id}`;
-  }
+  const server = state.activeServer || '';
+  const serverLabel = state.servers.find(s => s.host === state.activeServer)?.name || server;
+  let suffix = '';
+  if (state.sessionState?.sessionName) suffix = state.sessionState.sessionName;
+  else if (state.sessionState?.model) suffix = state.sessionState.model.id;
+  el.textContent = suffix ? `${serverLabel} — ${suffix}` : serverLabel;
 }
 
 function showAbortButton(show) {
@@ -1912,7 +2020,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('refreshSkillsBtn').addEventListener('click', renderSkills);
   document.getElementById('refreshPluginsBtn').addEventListener('click', renderPlugins);
 
-  // Connect
+  // Load servers and connect
+  loadServers();
   connect();
 });
 </script>
