@@ -127,9 +127,13 @@ async function getLatestReleaseFromGithub(
 
 	// Find the tgz asset
 	const tgzAsset = data.assets?.find((a) => a.name.endsWith(".tgz"));
-	// Keep the full name with version for correct download URL construction
-	// e.g., "earendil-works-pi-coding-agent-0.77.0" from "earendil-works-pi-coding-agent-0.77.0.tgz"
-	const packageName = tgzAsset?.name.replace(/\.tgz$/, "");
+	// Keep the full name but update version to release tag version
+	// e.g., "earendil-works-pi-coding-agent-0.77.0" -> "earendil-works-pi-coding-agent-1.0.0"
+	let packageName = tgzAsset?.name.replace(/\.tgz$/, "");
+	if (packageName) {
+		// Replace the version number at the end with the release tag version
+		packageName = packageName.replace(/\d+\.\d+\.\d+$/, version);
+	}
 
 	const note = typeof data.body === "string" ? data.body.slice(0, 500) : undefined;
 
