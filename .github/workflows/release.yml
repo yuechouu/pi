@@ -2,14 +2,8 @@ name: Build and Release
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
-    inputs:
-      publish:
-        description: 'Publish to npm?'
-        required: true
-        type: boolean
-        default: false
+    tags:
+      - 'v*'
 
 jobs:
   build:
@@ -38,7 +32,6 @@ jobs:
           npm pack
 
       - name: Publish to npm
-        if: github.event.inputs.publish == 'true' || startsWith(github.ref, 'refs/tags/v')
         run: |
           cd packages/coding-agent
           npm publish --provenance --access public
@@ -46,16 +39,9 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
         with:
           files: packages/coding-agent/*.tgz
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload tarball artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: npm-package
-          path: packages/coding-agent/*.tgz
