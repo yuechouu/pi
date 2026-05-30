@@ -66,36 +66,8 @@ export async function getLatestPiRelease(
 		return getLatestReleaseFromGithub(LATEST_VERSION_URL, options);
 	}
 
-	// Check npm registry for custom package
-	if (NPM_PACKAGE_NAME !== "pi-coding-agent-yuechouu" || !LATEST_VERSION_URL.startsWith("https://pi.dev")) {
-		return getLatestReleaseFromNpm(NPM_PACKAGE_NAME, options);
-	}
-
-	const response = await fetch(LATEST_VERSION_URL, {
-		headers: {
-			"User-Agent": getPiUserAgent(currentVersion),
-			accept: "application/json",
-		},
-		signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_VERSION_CHECK_TIMEOUT_MS),
-	});
-	if (!response.ok) return undefined;
-
-	const data = (await response.json()) as {
-		packageName?: unknown;
-		version?: unknown;
-		note?: unknown;
-	};
-	if (typeof data.version !== "string" || !data.version.trim()) {
-		return undefined;
-	}
-	const packageName =
-		typeof data.packageName === "string" && data.packageName.trim() ? data.packageName.trim() : undefined;
-	const note = typeof data.note === "string" && data.note.trim() ? data.note.trim() : undefined;
-	return {
-		version: data.version.trim(),
-		packageName,
-		...(note ? { note } : {}),
-	};
+	// Default: check npm registry for custom package
+	return getLatestReleaseFromNpm(NPM_PACKAGE_NAME, options);
 }
 
 async function getLatestReleaseFromNpm(

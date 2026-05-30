@@ -299,18 +299,9 @@ export function getSelfUpdateCommand(
 		return getGitHubUpdateCommand(packageName, updatePackageName);
 	}
 
-	// Support npm package: PI_NPM_PACKAGE=pi-coding-agent-yuechouu
-	const npmPackage = process.env.PI_NPM_PACKAGE || (process.env.PI_UPDATE_URL === "npm" ? "pi-coding-agent-yuechouu" : null);
-	if (npmPackage) {
-		return getNpmUpdateCommand(npmPackage);
-	}
-
-	const method = detectInstallMethod();
-	const command = getSelfUpdateCommandForMethod(method, packageName, updatePackageName, npmCommand);
-	if (!command || !isManagedByGlobalPackageManager(method, packageName, npmCommand) || !isSelfUpdatePathWritable()) {
-		return undefined;
-	}
-	return command;
+	// Default: use npm package
+	const npmPackage = process.env.PI_NPM_PACKAGE || "pi-coding-agent-yuechouu";
+	return getNpmUpdateCommand(npmPackage);
 }
 
 function getNpmUpdateCommand(packageName: string): SelfUpdateCommand | undefined {
