@@ -738,6 +738,65 @@ body::before {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--fg-muted); }
+
+/* Server Tabs */
+.server-tabs {
+  display: flex;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  min-height: 36px;
+}
+
+.server-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+  white-space: nowrap;
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.server-tab:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
+.server-tab.active { background: var(--bg-primary); color: var(--accent); border-bottom: 2px solid var(--accent); }
+
+.server-tab .tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-red);
+  flex-shrink: 0;
+}
+
+.server-tab .tab-dot.connected { background: var(--accent-green); }
+
+.server-tab .tab-close {
+  margin-left: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  cursor: pointer;
+  color: var(--fg-muted);
+}
+
+.server-tab:hover .tab-close { opacity: 1; }
+.server-tab .tab-close:hover { color: var(--accent-red); }
+
+.server-tab-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: var(--fg-muted);
+  transition: all 0.15s;
+}
+
+.server-tab-add:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
 </style>
 </head>
 <body>
@@ -786,17 +845,6 @@ body::before {
         Dashboard
       </div>
     </nav>
-    <!-- Server Selector -->
-    <div style="padding: 8px 12px; border-top: 1px solid var(--border);">
-      <div style="font-size: 11px; color: var(--fg-muted); margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
-        <span>Servers</span>
-        <button class="btn-icon" onclick="showAddServer()" title="Add server" style="padding: 2px;">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        </button>
-      </div>
-      <div id="serverList" style="display: flex; flex-direction: column; gap: 2px;"></div>
-    </div>
-
     <div class="sidebar-status">
       <div style="margin-bottom: 6px;">
         <span class="status-dot connecting" id="statusDot"></span>
@@ -811,6 +859,9 @@ body::before {
 
   <!-- Main Content -->
   <main class="main-content">
+    <!-- Server Tabs -->
+    <div class="server-tabs" id="serverTabs"></div>
+
     <!-- Chat Page -->
     <div class="page active" data-page="chat" style="display:flex; flex-direction:column; height:100%;">
       <div class="page-header">
@@ -959,24 +1010,31 @@ body::before {
 
 <script>
 // ========================================================================
-// State
+// Global State
 // ========================================================================
-const state = {
-  ws: null,
-  connected: false,
-  currentPage: 'chat',
-  sessionState: null,
-  messages: [],
-  models: [],
+const G = {
+  page: 'chat',
   logs: [],
   logFilter: 'all',
-  toolExecutions: new Map(),
-  streamingMessages: new Map(),
-  currentStreamId: null,
-  msgCounter: 0,
-  servers: [],
-  activeServer: null,
+  servers: [],        // [{name, host}]
+  active: null,        // active host string
+  sessionsList: [],
+  currentDir: null,
+  currentFile: null,
 };
+
+// Per-server state
+const SS = {};  // SS[host] = { ws, connected, session, messages, models, tools, streams, streamId, msgCnt, cwd }
+
+function S(host) {
+  host = host || G.active;
+  if (!host) return null;
+  if (!SS[host]) SS[host] = {
+    ws: null, ok: false, session: null, messages: [], models: [],
+    tools: new Map(), streams: new Map(), streamId: null, msgCnt: 0, cwd: ''
+  };
+  return SS[host];
+}
 
 // ========================================================================
 // WebSocket
@@ -985,191 +1043,127 @@ const state = {
 // Server Management
 // ========================================================================
 function loadServers() {
-  try {
-    const saved = localStorage.getItem('pi-servers');
-    state.servers = saved ? JSON.parse(saved) : [];
-  } catch { state.servers = []; }
-
-  // Add current page host as default if no servers saved
-  if (state.servers.length === 0) {
-    state.servers = [{ name: 'Default', host: location.host }];
-  }
-
-  // Set active server from URL hash or first server
-  const hashServer = location.hash.slice(1);
-  if (hashServer && state.servers.find(s => s.host === hashServer)) {
-    state.activeServer = hashServer;
-  } else {
-    state.activeServer = state.servers[0].host;
-  }
-
-  renderServerList();
+  try { G.servers = JSON.parse(localStorage.getItem('pi-servers') || '[]'); } catch { G.servers = []; }
+  if (G.servers.length === 0) G.servers = [{ name: 'Default', host: location.host }];
+  G.active = location.hash.slice(1) || G.servers[0].host;
+  if (!G.servers.find(s => s.host === G.active)) G.active = G.servers[0].host;
+  renderTabs();
+  connectAll();
 }
 
-function saveServers() {
-  localStorage.setItem('pi-servers', JSON.stringify(state.servers));
+function saveServers() { localStorage.setItem('pi-servers', JSON.stringify(G.servers)); }
+
+function renderTabs() {
+  const el = document.getElementById('serverTabs');
+  el.innerHTML = G.servers.map(s => {
+    const ss = S(s.host);
+    const ok = ss?.ok;
+    return `<div class="server-tab ${s.host === G.active ? 'active' : ''}" onclick="activateServer('${s.host}')">
+      <span class="tab-dot ${ok ? 'connected' : ''}"></span>
+      <span>${escapeHtml(s.name || s.host)}</span>
+      <span class="tab-close" onclick="event.stopPropagation(); removeServer('${s.host}')">×</span>
+    </div>`;
+  }).join('') + `<div class="server-tab-add" onclick="addServer()" title="Add server">+</div>`;
 }
 
-function renderServerList() {
-  const container = document.getElementById('serverList');
-  container.innerHTML = state.servers.map(s => {
-    const isActive = s.host === state.activeServer;
-    return `
-      <div class="nav-item ${isActive ? 'active' : ''}" style="padding: 5px 8px; font-size: 12px; cursor: pointer;" onclick="switchServer('${s.host}')">
-        <span class="status-dot ${isActive && state.connected ? '' : isActive ? 'disconnected' : ''}" style="width: 6px; height: 6px;"></span>
-        <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(s.name || s.host)}</span>
-        ${state.servers.length > 1 ? `<button class="btn-icon" onclick="event.stopPropagation(); removeServer('${s.host}')" style="padding: 1px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>` : ''}
-      </div>
-    `;
-  }).join('');
-}
-
-function switchServer(host) {
-  if (host === state.activeServer && state.connected) return;
-  state.activeServer = host;
+function activateServer(host) {
+  if (host === G.active) return;
+  G.active = host;
   location.hash = host;
-  // Clear state
-  state.messages = [];
-  state.sessionState = null;
-  state.streamingMessages.clear();
-  state.toolExecutions.clear();
-  document.getElementById('chatMessages').innerHTML = '';
-  // Reconnect
-  if (state.ws) { state.ws.close(); state.ws = null; }
-  connect();
-  renderServerList();
+  renderTabs();
+  renderChat();
+  updateTitle();
+  if (!S(host).ok) connectTo(host);
 }
 
-function showAddServer() {
-  const input = prompt('Enter server host:port (e.g. localhost:3210)', 'localhost:3210');
-  if (!input) return;
-  const host = input.trim();
-  if (!host) return;
-  if (state.servers.find(s => s.host === host)) {
-    alert('Server already exists');
-    return;
-  }
-  const name = prompt('Server name (optional)', '') || host;
-  state.servers.push({ name, host });
+function addServer() {
+  const host = prompt('host:port', 'localhost:3210');
+  if (!host?.trim()) return;
+  if (G.servers.find(s => s.host === host.trim())) return alert('Already exists');
+  const name = prompt('Name (optional)', '') || host.trim();
+  G.servers.push({ name, host: host.trim() });
   saveServers();
-  renderServerList();
-  switchServer(host);
+  activateServer(host.trim());
+  connectTo(host.trim());
 }
 
 function removeServer(host) {
-  state.servers = state.servers.filter(s => s.host !== host);
+  const ss = S(host);
+  if (ss?.ws) ss.ws.close();
+  delete SS[host];
+  G.servers = G.servers.filter(s => s.host !== host);
   saveServers();
-  if (state.activeServer === host) {
-    state.activeServer = state.servers[0]?.host || null;
-    if (state.activeServer) switchServer(state.activeServer);
+  if (G.active === host) {
+    G.active = G.servers[0]?.host || null;
+    if (G.active) activateServer(G.active);
   }
-  renderServerList();
+  renderTabs();
 }
 
 // ========================================================================
-// WebSocket Connection
+// WebSocket — one connection per server
 // ========================================================================
-function connect() {
-  if (!state.activeServer) return;
+function connectAll() { G.servers.forEach(s => connectTo(s.host)); }
+
+function connectTo(host) {
+  const ss = S(host);
+  if (ss.ws) { try { ss.ws.close(); } catch {} }
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const url = `${proto}//${state.activeServer}/ws`;
-  console.log('[PiAgent] Connecting to', url);
-  updateStatus(false, 'Connecting...');
+  const ws = new WebSocket(`${proto}//${host}/ws`);
+  ss.ws = ws;
 
-  const ws = new WebSocket(url);
-
-  ws.onopen = () => {
-    state.connected = true;
-    state.ws = ws;
-    updateStatus(true);
-    log('info', `Connected to ${state.activeServer}`);
-    console.log('[PiAgent] WebSocket connected');
-  };
-
-  ws.onclose = (evt) => {
-    state.connected = false;
-    state.ws = null;
-    updateStatus(false);
-    log('warn', `Disconnected from ${state.activeServer} (code=${evt.code})`);
-    console.log('[PiAgent] WebSocket closed', evt.code, evt.reason);
-    // Auto-reconnect if still the active server
-    setTimeout(() => {
-      if (state.ws === null && state.activeServer) connect();
-    }, 3000);
-  };
-
-  ws.onerror = (evt) => {
-    log('error', `WebSocket error connecting to ${state.activeServer}`);
-    console.error('[PiAgent] WebSocket error', evt);
-  };
-
-  ws.onmessage = (event) => {
-    try {
-      const msg = JSON.parse(event.data);
-      console.log('[PiAgent] Received:', msg.type, msg);
-      handleMessage(msg);
-    } catch (e) {
-      log('error', `Failed to parse message: ${e.message}`);
-    }
-  };
+  ws.onopen = () => { ss.ok = true; renderTabs(); log('info', `Connected to ${host}`); };
+  ws.onclose = () => { ss.ok = false; renderTabs(); setTimeout(() => { if (!ss.ok && G.servers.find(s => s.host === host)) connectTo(host); }, 3000); };
+  ws.onerror = () => { log('error', `WS error: ${host}`); };
+  ws.onmessage = (e) => { try { handleMessage(host, JSON.parse(e.data)); } catch {} };
 }
 
-function send(obj) {
-  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-    state.ws.send(JSON.stringify(obj));
-  }
+function send(obj, host) {
+  const ss = S(host || G.active);
+  if (ss?.ws?.readyState === WebSocket.OPEN) ss.ws.send(JSON.stringify(obj));
+}
+
+function fetchApi(path, host) {
+  const h = host || G.active;
+  return fetch(`http://${h}${path}`).then(r => r.json());
 }
 
 // ========================================================================
-// Message Handler
+// Message Handler — routes to correct server state
 // ========================================================================
-function handleMessage(msg) {
-  // Connection confirmation
+function handleMessage(host, msg) {
+  const ss = S(host);
   if (msg.type === 'connected') {
-    state.sessionState = msg.state;
-    loadMessages();
-    updateChatTitle();
-    if (msg.state.cwd) {
-      document.getElementById('cwdPath').textContent = msg.state.cwd;
-    }
+    ss.session = msg.state;
+    ss.cwd = msg.state.cwd || '';
+    send({ type: 'get_messages' }, host);
+    if (host === G.active) { updateTitle(); renderChat(); }
     return;
   }
 
-  // RPC responses
   if (msg.type === 'response') {
     if (msg.command === 'get_messages' && msg.success) {
-      state.messages = msg.data.messages;
-      console.log('[PiAgent] Loaded', msg.data.messages.length, 'messages');
-      renderChatMessages();
+      ss.messages = msg.data.messages;
+      if (host === G.active) renderChat();
     }
     if (msg.command === 'get_state' && msg.success) {
-      state.sessionState = msg.data;
-      updateChatTitle();
+      ss.session = msg.data;
+      if (host === G.active) updateTitle();
     }
     if (msg.command === 'get_available_models' && msg.success) {
-      state.models = msg.data.models;
-      renderModels();
+      ss.models = msg.data.models;
+      if (host === G.active && G.page === 'models') renderModels();
     }
     if (msg.command === 'set_model' && msg.success) {
-      if (state.sessionState) state.sessionState.model = msg.data;
-      if (state.currentPage === 'models') renderModels();
-      updateChatTitle();
+      if (ss.session) ss.session.model = msg.data;
+      if (host === G.active) { updateTitle(); if (G.page === 'models') renderModels(); }
     }
     if (msg.command === 'switch_session') {
       if (msg.success) {
-        // Clear current chat and switch to chat page
-        document.getElementById('chatMessages').innerHTML = '';
-        state.streamingMessages.clear();
-        state.toolExecutions.clear();
-        switchPage('chat');
-        // Reload state and messages from new session
-        send({ type: 'get_state' });
-        send({ type: 'get_messages' });
-        log('info', 'Session switched successfully');
-      } else {
-        log('error', `Session switch failed: ${msg.error}`);
-        alert('Session switch failed: ' + msg.error);
-      }
+        send({ type: 'get_state' }, host);
+        send({ type: 'get_messages' }, host);
+        if (host === G.active) switchPage('chat');
+      } else if (host === G.active) alert('Switch failed: ' + msg.error);
     }
     return;
   }
@@ -1177,363 +1171,193 @@ function handleMessage(msg) {
   // Agent events
   switch (msg.type) {
     case 'message_start':
-      handleMessageStart(msg);
-      if (msg.message?.role === 'assistant') log('info', 'Assistant response started');
+      if (msg.message?.role === 'assistant') {
+        const id = 'msg-' + (++ss.msgCnt);
+        ss.streams.set(id, { text: '', thinking: '' });
+        ss.streamId = id;
+        if (host === G.active) { appendStreamEl(id); scrollToBottom(); }
+      }
       break;
-    case 'message_update':
-      handleMessageUpdate(msg);
+    case 'message_update': {
+      if (!ss.streamId) break;
+      const st = ss.streams.get(ss.streamId);
+      if (!st) break;
+      const evt = msg.assistantMessageEvent;
+      if (evt?.type === 'text_delta') st.text += evt.delta || '';
+      else if (evt?.type === 'thinking_delta') st.thinking += evt.delta || '';
+      if (host === G.active) updateStreamEl(ss.streamId, st);
       break;
-    case 'message_end':
-      handleMessageEnd(msg);
+    }
+    case 'message_end': {
+      if (!ss.streamId) break;
+      const st = ss.streams.get(ss.streamId);
+      if (st && host === G.active) finalizeStreamEl(ss.streamId, st);
+      ss.streams.delete(ss.streamId);
+      ss.streamId = null;
       break;
+    }
     case 'tool_execution_start':
-      handleToolStart(msg);
-      log('info', `Tool: ${msg.toolName} started`);
+      ss.tools.set(msg.toolCallId, { name: msg.toolName, status: 'running', body: '' });
+      if (host === G.active) renderToolEl(msg.toolCallId, ss);
       break;
-    case 'tool_execution_update':
-      handleToolUpdate(msg);
+    case 'tool_execution_update': {
+      const t = ss.tools.get(msg.toolCallId);
+      if (t && msg.partialResult) {
+        const r = msg.partialResult;
+        t.body += typeof r === 'string' ? r : r.output || r.text || '';
+      }
+      if (host === G.active) updateToolEl(msg.toolCallId, ss);
       break;
-    case 'tool_execution_end':
-      handleToolEnd(msg);
-      log(msg.isError ? 'error' : 'info', `Tool: ${msg.toolName} ${msg.isError ? 'failed' : 'completed'}`);
+    }
+    case 'tool_execution_end': {
+      const t = ss.tools.get(msg.toolCallId);
+      if (t) {
+        t.status = msg.isError ? 'error' : 'success';
+        if (msg.result) {
+          const r = msg.result;
+          if (typeof r === 'string') t.body = r;
+          else if (r.text) t.body = r.text;
+          else if (r.output) t.body = r.output;
+        }
+      }
+      if (host === G.active) updateToolEl(msg.toolCallId, ss);
       break;
+    }
     case 'agent_start':
-      showAbortButton(true);
-      log('info', 'Agent started');
+      if (host === G.active) showAbort(true);
       break;
     case 'agent_end':
-      showAbortButton(false);
-      log('info', 'Agent finished');
-      break;
-    case 'turn_start':
-    case 'turn_end':
+      if (host === G.active) showAbort(false);
       break;
   }
-}
-
-function handleMessageStart(msg) {
-  if (msg.message?.role !== 'assistant') return;
-  const id = 'msg-' + (++state.msgCounter);
-  state.streamingMessages.set(id, { text: '', thinking: '' });
-  state.currentStreamId = id;
-  const el = createStreamingMessage(id);
-  document.getElementById('chatMessages').appendChild(el);
-  scrollToBottom();
-}
-
-function handleMessageUpdate(msg) {
-  if (!state.currentStreamId) return;
-  const streaming = state.streamingMessages.get(state.currentStreamId);
-  if (!streaming) return;
-
-  const evt = msg.assistantMessageEvent;
-  if (!evt) return;
-
-  if (evt.type === 'text_delta' && evt.delta) {
-    streaming.text += evt.delta;
-  } else if (evt.type === 'thinking_delta' && evt.delta) {
-    streaming.thinking += evt.delta;
-  }
-
-  updateStreamingMessage(state.currentStreamId, streaming);
-}
-
-function handleMessageEnd(msg) {
-  if (!state.currentStreamId) return;
-  const streaming = state.streamingMessages.get(state.currentStreamId);
-  if (streaming) {
-    finalizeStreamingMessage(state.currentStreamId, streaming);
-    state.streamingMessages.delete(state.currentStreamId);
-  }
-  state.currentStreamId = null;
-}
-
-function handleToolStart(msg) {
-  state.toolExecutions.set(msg.toolCallId, {
-    name: msg.toolName,
-    label: msg.toolName,
-    status: 'running',
-    body: '',
-    args: msg.args,
-  });
-  renderToolInChat(msg.toolCallId);
-}
-
-function handleToolUpdate(msg) {
-  const tool = state.toolExecutions.get(msg.toolCallId);
-  if (!tool) return;
-  // partialResult may contain partial output
-  if (msg.partialResult) {
-    if (typeof msg.partialResult === 'string') tool.body += msg.partialResult;
-    else if (msg.partialResult.output) tool.body += msg.partialResult.output;
-    else if (msg.partialResult.text) tool.body += msg.partialResult.text;
-  }
-  updateToolInChat(msg.toolCallId);
-}
-
-function handleToolEnd(msg) {
-  const tool = state.toolExecutions.get(msg.toolCallId);
-  if (!tool) return;
-  tool.status = msg.isError ? 'error' : 'success';
-  // Extract result text from various possible structures
-  if (msg.result) {
-    if (typeof msg.result === 'string') tool.body = msg.result;
-    else if (msg.result.text) tool.body = msg.result.text;
-    else if (msg.result.output) tool.body = msg.result.output;
-  }
-  updateToolInChat(msg.toolCallId);
 }
 
 // ========================================================================
 // Chat Rendering
 // ========================================================================
-function renderChatMessages() {
-  const container = document.getElementById('chatMessages');
-  container.innerHTML = '';
-
-  for (const msg of state.messages) {
-    if (msg.role === 'user') {
-      container.appendChild(createUserMessage(extractText(msg)));
-    } else if (msg.role === 'assistant') {
-      const text = extractAssistantText(msg);
-      if (text) container.appendChild(createAssistantMessage(text));
-    } else if (msg.role === 'toolResult') {
-      // Tool results are shown via tool_execution events
-    }
+function renderChat() {
+  const ss = S();
+  if (!ss) return;
+  const box = document.getElementById('chatMessages');
+  box.innerHTML = '';
+  for (const m of ss.messages) {
+    if (m.role === 'user') box.appendChild(mkUserMsg(extractText(m)));
+    else if (m.role === 'assistant') { const t = extractAsstText(m); if (t) box.appendChild(mkAsstMsg(t)); }
   }
   scrollToBottom();
 }
 
-function extractText(msg) {
-  if (typeof msg.content === 'string') return msg.content;
-  if (Array.isArray(msg.content)) {
-    return msg.content.filter(b => b.type === 'text').map(b => b.text).join('');
-  }
-  return '';
+function extractText(m) { return typeof m.content === 'string' ? m.content : Array.isArray(m.content) ? m.content.filter(b => b.type === 'text').map(b => b.text).join('') : ''; }
+function extractAsstText(m) { return extractText(m); }
+
+function mkUserMsg(t) { const d = document.createElement('div'); d.className = 'message message-user'; d.textContent = t; return d; }
+function mkAsstMsg(t) { const d = document.createElement('div'); d.className = 'message message-assistant'; d.innerHTML = renderMarkdown(t); return d; }
+
+function appendStreamEl(id) {
+  const d = document.createElement('div'); d.className = 'message message-assistant'; d.id = `msg-${id}`; d.innerHTML = '<span class="streaming-cursor"></span>';
+  document.getElementById('chatMessages').appendChild(d);
 }
 
-function extractAssistantText(msg) {
-  if (typeof msg.content === 'string') return msg.content;
-  if (Array.isArray(msg.content)) {
-    return msg.content.filter(b => b.type === 'text').map(b => b.text).join('');
-  }
-  return '';
+function updateStreamEl(id, st) {
+  const el = document.getElementById(`msg-${id}`); if (!el) return;
+  let h = '';
+  if (st.thinking) h += `<div style="color:var(--fg-muted);font-size:12px;font-style:italic;margin-bottom:6px;padding:6px 10px;background:var(--bg-primary);border-radius:4px;border-left:3px solid var(--border-light)">${escapeHtml(st.thinking)}</div>`;
+  if (st.text) h += renderMarkdown(st.text);
+  h += '<span class="streaming-cursor"></span>';
+  el.innerHTML = h; scrollToBottom();
 }
 
-function createUserMessage(text) {
-  const div = document.createElement('div');
-  div.className = 'message message-user';
-  div.textContent = text;
-  return div;
+function finalizeStreamEl(id, st) {
+  const el = document.getElementById(`msg-${id}`); if (!el) return;
+  let h = '';
+  if (st.thinking) h += `<div style="color:var(--fg-muted);font-size:12px;font-style:italic;margin-bottom:6px;padding:6px 10px;background:var(--bg-primary);border-radius:4px;border-left:3px solid var(--border-light)">${escapeHtml(st.thinking)}</div>`;
+  if (st.text) h += renderMarkdown(st.text);
+  el.innerHTML = h; scrollToBottom();
 }
 
-function createAssistantMessage(text) {
-  const div = document.createElement('div');
-  div.className = 'message message-assistant';
-  div.innerHTML = renderMarkdown(text);
-  return div;
+function renderToolEl(id, ss) {
+  const t = ss.tools.get(id); if (!t) return;
+  const d = document.createElement('div'); d.id = `tool-${id}`; d.className = 'tool-execution';
+  d.innerHTML = `<div class="tool-header" onclick="toggleToolBody('${id}')"><span class="tool-icon">●</span><span class="tool-name">${escapeHtml(t.name)}</span><span class="tool-status running">running</span></div><div class="tool-body" id="tool-body-${id}"></div>`;
+  document.getElementById('chatMessages').appendChild(d); scrollToBottom();
 }
 
-function createStreamingMessage(messageId) {
-  const div = document.createElement('div');
-  div.className = 'message message-assistant';
-  div.id = `msg-${messageId}`;
-  div.innerHTML = '<span class="streaming-cursor"></span>';
-  return div;
-}
-
-function updateStreamingMessage(messageId, streaming) {
-  const el = document.getElementById(`msg-${messageId}`);
-  if (!el) return;
-
-  let html = '';
-  if (streaming.thinking) {
-    html += `<div style="color: var(--fg-muted); font-size: 12px; font-style: italic; margin-bottom: 6px; padding: 6px 10px; background: var(--bg-primary); border-radius: 4px; border-left: 3px solid var(--border-light);">${escapeHtml(streaming.thinking)}</div>`;
-  }
-  if (streaming.text) {
-    html += renderMarkdown(streaming.text);
-  }
-  html += '<span class="streaming-cursor"></span>';
-  el.innerHTML = html;
+function updateToolEl(id, ss) {
+  const t = ss.tools.get(id); if (!t) return;
+  const el = document.getElementById(`tool-${id}`); if (!el) return;
+  const st = el.querySelector('.tool-status'); st.className = `tool-status ${t.status}`; st.textContent = t.status;
+  const ic = el.querySelector('.tool-icon'); ic.textContent = t.status === 'success' ? '✓' : t.status === 'error' ? '×' : '●';
+  ic.style.color = t.status === 'success' ? 'var(--accent-green)' : t.status === 'error' ? 'var(--accent-red)' : 'var(--accent-warm)';
+  const body = document.getElementById(`tool-body-${id}`);
+  if (body && t.body) { body.textContent = t.body; if (t.status !== 'running') body.classList.add('expanded'); }
   scrollToBottom();
 }
 
-function finalizeStreamingMessage(messageId, streaming) {
-  const el = document.getElementById(`msg-${messageId}`);
-  if (!el) return;
-
-  let html = '';
-  if (streaming.thinking) {
-    html += `<div style="color: var(--fg-muted); font-size: 12px; font-style: italic; margin-bottom: 6px; padding: 6px 10px; background: var(--bg-primary); border-radius: 4px; border-left: 3px solid var(--border-light);">${escapeHtml(streaming.thinking)}</div>`;
-  }
-  if (streaming.text) {
-    html += renderMarkdown(streaming.text);
-  }
-  el.innerHTML = html;
-  scrollToBottom();
-}
-
-function renderToolInChat(toolCallId) {
-  const tool = state.toolExecutions.get(toolCallId);
-  if (!tool) return;
-
-  const container = document.getElementById('chatMessages');
-  const div = document.createElement('div');
-  div.id = `tool-${toolCallId}`;
-  div.className = 'tool-execution';
-  div.innerHTML = `
-    <div class="tool-header" onclick="toggleToolBody('${toolCallId}')">
-      <span class="tool-icon">●</span>
-      <span class="tool-name">${escapeHtml(tool.name)}</span>
-      <span class="tool-label">${escapeHtml(tool.label)}</span>
-      <span class="tool-status running">running</span>
-    </div>
-    <div class="tool-body" id="tool-body-${toolCallId}">${tool.body ? escapeHtml(tool.body) : ''}</div>
-  `;
-  container.appendChild(div);
-  scrollToBottom();
-}
-
-function updateToolInChat(toolCallId) {
-  const tool = state.toolExecutions.get(toolCallId);
-  if (!tool) return;
-
-  const el = document.getElementById(`tool-${toolCallId}`);
-  if (!el) return;
-
-  const statusEl = el.querySelector('.tool-status');
-  statusEl.className = `tool-status ${tool.status}`;
-  statusEl.textContent = tool.status;
-
-  const iconEl = el.querySelector('.tool-icon');
-  iconEl.textContent = tool.status === 'success' ? '✓' : tool.status === 'error' ? '×' : '●';
-  iconEl.style.color = tool.status === 'success' ? 'var(--accent-green)' : tool.status === 'error' ? 'var(--accent-red)' : 'var(--accent-warm)';
-
-  const bodyEl = document.getElementById(`tool-body-${toolCallId}`);
-  if (bodyEl && tool.body) {
-    bodyEl.textContent = tool.body;
-    if (tool.status !== 'running') bodyEl.classList.add('expanded');
-  }
-  scrollToBottom();
-}
-
-function toggleToolBody(toolCallId) {
-  const bodyEl = document.getElementById(`tool-body-${toolCallId}`);
-  if (bodyEl) bodyEl.classList.toggle('expanded');
-}
+function toggleToolBody(id) { const b = document.getElementById(`tool-body-${id}`); if (b) b.classList.toggle('expanded'); }
 
 // ========================================================================
-// Markdown Rendering (simple)
+// Markdown & Helpers
 // ========================================================================
 function renderMarkdown(text) {
-  let html = escapeHtml(text);
-
-  // Code blocks
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
-
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-  // Bold
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-
-  // Italic
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-
-  // Headings
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-
-  // Blockquotes
-  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-
-  // Lists
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
-
-  // Paragraphs
-  html = html.replace(/\n\n/g, '</p><p>');
-  html = html.replace(/\n/g, '<br>');
-  html = '<p>' + html + '</p>';
-
-  // Clean up empty paragraphs
-  html = html.replace(/<p><\/p>/g, '');
-
-  return html;
+  let h = escapeHtml(text);
+  h = h.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+  h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+  h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  h = h.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  h = h.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  h = h.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  h = h.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  h = h.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+  h = h.replace(/^- (.+)$/gm, '<li>$1</li>');
+  h = h.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+  h = h.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
+  return '<p>' + h + '</p>'.replace(/<p><\/p>/g, '');
 }
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
+function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
 
-// ========================================================================
-// UI Helpers
-// ========================================================================
-function updateStatus(connected, text) {
-  const dot = document.getElementById('statusDot');
-  const textEl = document.getElementById('statusText');
-  dot.className = connected ? 'status-dot' : 'status-dot disconnected';
-  textEl.textContent = text || (connected ? 'Connected' : 'Disconnected');
-}
-
-function updateChatTitle() {
+function updateTitle() {
   const el = document.getElementById('chatTitle');
-  const server = state.activeServer || '';
-  const serverLabel = state.servers.find(s => s.host === state.activeServer)?.name || server;
-  let suffix = '';
-  if (state.sessionState?.sessionName) suffix = state.sessionState.sessionName;
-  else if (state.sessionState?.model) suffix = state.sessionState.model.id;
-  el.textContent = suffix ? `${serverLabel} — ${suffix}` : serverLabel;
+  const s = S();
+  const name = G.servers.find(x => x.host === G.active)?.name || G.active || 'Pi Agent';
+  let sub = '';
+  if (s?.session?.sessionName) sub = s.session.sessionName;
+  else if (s?.session?.model) sub = s.session.model.id;
+  el.textContent = sub ? `${name} — ${sub}` : name;
+  if (s?.cwd) document.getElementById('cwdPath').textContent = s.cwd;
 }
 
-function showAbortButton(show) {
-  document.getElementById('abortBtn').style.display = show ? 'flex' : 'none';
-}
+function showAbort(show) { document.getElementById('abortBtn').style.display = show ? 'flex' : 'none'; }
 
 function scrollToBottom() {
-  const container = document.getElementById('chatMessages');
-  requestAnimationFrame(() => {
-    container.scrollTop = container.scrollHeight;
-  });
+  const c = document.getElementById('chatMessages');
+  requestAnimationFrame(() => { c.scrollTop = c.scrollHeight; });
 }
 
-function log(level, message) {
-  state.logs.push({ level, message, time: new Date() });
-  if (state.currentPage === 'logs') renderLogs();
+function log(level, msg) {
+  G.logs.push({ level, message: msg, time: new Date() });
+  if (G.page === 'logs') renderLogs();
 }
 
 // ========================================================================
 // Page Navigation
 // ========================================================================
 function switchPage(page) {
-  state.currentPage = page;
-
-  // Update nav items
-  document.querySelectorAll('.nav-item').forEach(el => {
-    el.classList.toggle('active', el.dataset.page === page);
-  });
-
-  // Show/hide pages
+  G.page = page;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
   document.querySelectorAll('.page').forEach(el => {
     el.style.display = el.dataset.page === page ? (page === 'chat' || page === 'files' ? 'flex' : 'block') : 'none';
     if (page === 'chat' || page === 'files') el.style.flexDirection = 'column';
   });
-
-  // Load page data
-  if (page === 'models' && state.models.length === 0) {
-    send({ type: 'get_available_models' });
-  }
-  if (page === 'logs') renderLogs();
-  if (page === 'dashboard') renderDashboard();
+  const ss = S();
+  if (page === 'models' && ss && ss.models.length === 0) send({ type: 'get_available_models' });
   if (page === 'sessions') renderSessions();
+  if (page === 'models') renderModels();
   if (page === 'config') renderConfig();
-  if (page === 'files' && !state.currentDir) loadFileTree();
+  if (page === 'dashboard') renderDashboard();
+  if (page === 'logs') renderLogs();
+  if (page === 'files' && !G.currentDir) loadFileTree();
   if (page === 'skills') renderSkills();
   if (page === 'plugins') renderPlugins();
 }
@@ -1543,34 +1367,19 @@ function switchPage(page) {
 // ========================================================================
 function sendMessage() {
   const input = document.getElementById('chatInput');
-  const text = input.value.trim();
-  if (!text) return;
-
-  // Add user message to UI immediately
-  const container = document.getElementById('chatMessages');
-  container.appendChild(createUserMessage(text));
+  const text = input.value.trim(); if (!text) return;
+  document.getElementById('chatMessages').appendChild(mkUserMsg(text));
   scrollToBottom();
-
-  // Send to server
   send({ type: 'prompt', message: text });
-  input.value = '';
-  input.style.height = 'auto';
+  input.value = ''; input.style.height = 'auto';
 }
 
-function abortAgent() {
-  send({ type: 'abort' });
-}
+function abortAgent() { send({ type: 'abort' }); }
 
 function newSession() {
   send({ type: 'new_session' });
+  const ss = S(); if (ss) { ss.messages = []; ss.streams.clear(); ss.tools.clear(); }
   document.getElementById('chatMessages').innerHTML = '';
-  state.messages = [];
-  state.streamingMessages.clear();
-  state.toolExecutions.clear();
-}
-
-function loadMessages() {
-  send({ type: 'get_messages' });
 }
 
 // ========================================================================
@@ -1578,410 +1387,136 @@ function loadMessages() {
 // ========================================================================
 function renderModels() {
   const container = document.getElementById('modelsContainer');
-  if (!state.sessionState) return;
-
-  const currentModel = state.sessionState.model;
-  const currentThinking = state.sessionState.thinkingLevel;
-
-  // Group by provider
+  const ss = S(); if (!ss?.session) return;
+  const { model: cur, thinkingLevel: th } = ss.session;
   const grouped = {};
-  for (const m of state.models) {
-    if (!grouped[m.provider]) grouped[m.provider] = [];
-    grouped[m.provider].push(m);
-  }
+  for (const m of ss.models) { (grouped[m.provider] ??= []).push(m); }
 
-  let html = `
-    <div class="model-current">
-      <div class="model-current-label">Current Model</div>
-      <div class="model-current-name">${currentModel ? `${currentModel.provider}/${currentModel.id}` : 'None'}</div>
-    </div>
-    <div style="margin-bottom: 20px;">
-      <div class="model-current-label">Thinking Level</div>
-      <div class="thinking-selector">
-        ${['off', 'minimal', 'low', 'medium', 'high', 'xhigh'].map(level =>
-          `<button class="thinking-btn ${currentThinking === level ? 'active' : ''}" onclick="setThinkingLevel('${level}')">${level}</button>`
-        ).join('')}
-      </div>
-    </div>
-  `;
-
-  for (const [provider, models] of Object.entries(grouped)) {
-    html += `<div class="model-section-title">${escapeHtml(provider)}</div><div class="model-list">`;
-    for (const m of models) {
-      const isActive = currentModel && currentModel.provider === m.provider && currentModel.id === m.id;
-      html += `
-        <div class="model-item ${isActive ? 'active' : ''}" onclick="setModel('${m.provider}', '${m.id}')">
-          <span class="model-provider">${escapeHtml(m.provider)}</span>
-          <span class="model-id">${escapeHtml(m.id)}</span>
-        </div>
-      `;
-    }
+  let html = `<div class="model-current"><div class="model-current-label">Current Model</div><div class="model-current-name">${cur ? cur.provider + '/' + cur.id : 'None'}</div></div>
+    <div style="margin-bottom:20px"><div class="model-current-label">Thinking Level</div><div class="thinking-selector">
+    ${['off','minimal','low','medium','high','xhigh'].map(l => `<button class="thinking-btn ${th===l?'active':''}" onclick="setThinkingLevel('${l}')">${l}</button>`).join('')}
+    </div></div>`;
+  for (const [p, ms] of Object.entries(grouped)) {
+    html += `<div class="model-section-title">${escapeHtml(p)}</div><div class="model-list">`;
+    for (const m of ms) html += `<div class="model-item ${cur?.provider===m.provider&&cur?.id===m.id?'active':''}" onclick="setModel('${m.provider}','${m.id}')"><span class="model-provider">${escapeHtml(m.provider)}</span><span class="model-id">${escapeHtml(m.id)}</span></div>`;
     html += '</div>';
   }
-
   container.innerHTML = html;
 }
 
-function setModel(provider, modelId) {
-  send({ type: 'set_model', provider, modelId });
-}
-
-function setThinkingLevel(level) {
-  send({ type: 'set_thinking_level', level });
-  if (state.sessionState) state.sessionState.thinkingLevel = level;
-  renderModels();
-}
+function setModel(p, id) { send({ type: 'set_model', provider: p, modelId: id }); }
+function setThinkingLevel(l) { send({ type: 'set_thinking_level', level: l }); const ss = S(); if (ss?.session) ss.session.thinkingLevel = l; renderModels(); }
 
 // ========================================================================
 // Sessions Page
 // ========================================================================
 function renderSessions() {
-  const container = document.getElementById('sessionsList');
-  container.innerHTML = '<div style="color: var(--fg-muted); padding: 20px; text-align: center;">Loading sessions...</div>';
-
-  fetch('/api/sessions')
-    .then(r => r.json())
-    .then(data => {
-      if (!data.sessions || data.sessions.length === 0) {
-        container.innerHTML = '<div style="color: var(--fg-muted); padding: 20px; text-align: center;">No sessions found</div>';
-        return;
-      }
-
-      // Store sessions data for click handling
-      state.sessionsList = data.sessions;
-
-      container.innerHTML = data.sessions.map((s, idx) => {
-        const date = new Date(s.modified);
-        const timeAgo = formatTimeAgo(date);
-        const displayName = s.name || s.firstMessage?.slice(0, 60) || s.id?.slice(0, 8) || 'Untitled';
-        return `
-          <div class="session-item ${s.isCurrent ? 'active' : ''}" data-session-idx="${idx}" onclick="handleSessionClick(${idx})">
-            <svg class="session-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            <div class="session-info">
-              <div class="session-name">${escapeHtml(displayName)}</div>
-              <div class="session-meta">${s.messageCount} msgs · ${timeAgo}${s.cwd ? ' · ' + escapeHtml(s.cwd.split(/[/\\]/).pop()) : ''}</div>
-            </div>
-            ${s.isCurrent ? '<span style="font-size:11px; color:var(--accent);">current</span>' : ''}
-          </div>
-        `;
-      }).join('');
-    })
-    .catch(err => {
-      container.innerHTML = `<div style="color: var(--accent-red); padding: 20px;">Error: ${escapeHtml(err.message)}</div>`;
-    });
+  const c = document.getElementById('sessionsList');
+  c.innerHTML = '<div style="color:var(--fg-muted);padding:20px;text-align:center">Loading...</div>';
+  fetchApi('/api/sessions').then(data => {
+    if (!data.sessions?.length) { c.innerHTML = '<div style="color:var(--fg-muted);padding:20px;text-align:center">No sessions</div>'; return; }
+    G.sessionsList = data.sessions;
+    c.innerHTML = data.sessions.map((s, i) => {
+      const t = formatTimeAgo(new Date(s.modified));
+      const n = s.name || s.firstMessage?.slice(0, 60) || s.id?.slice(0, 8) || 'Untitled';
+      return `<div class="session-item ${s.isCurrent?'active':''}" onclick="handleSessionClick(${i})">
+        <svg class="session-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <div class="session-info"><div class="session-name">${escapeHtml(n)}</div><div class="session-meta">${s.messageCount} msgs · ${t}</div></div>
+        ${s.isCurrent?'<span style="font-size:11px;color:var(--accent)">current</span>':''}</div>`;
+    }).join('');
+  }).catch(e => { c.innerHTML = `<div style="color:var(--accent-red);padding:20px">${escapeHtml(e.message)}</div>`; });
 }
 
-function formatTimeAgo(date) {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return 'just now';
-  if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
-  if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
-  return Math.floor(seconds / 86400) + 'd ago';
-}
-
-function handleSessionClick(idx) {
-  const s = state.sessionsList?.[idx];
-  if (!s || s.isCurrent) return;
-  switchSession(s.file);
-}
-
-function switchSession(sessionPath) {
-  log('info', `Switching to session: ${sessionPath.slice(-40)}...`);
-  send({ type: 'switch_session', sessionPath });
-}
+function formatTimeAgo(d) { const s = Math.floor((Date.now() - d.getTime()) / 1000); if (s < 60) return 'just now'; if (s < 3600) return Math.floor(s/60) + 'm ago'; if (s < 86400) return Math.floor(s/3600) + 'h ago'; return Math.floor(s/86400) + 'd ago'; }
+function handleSessionClick(i) { const s = G.sessionsList?.[i]; if (!s || s.isCurrent) return; send({ type: 'switch_session', sessionPath: s.file }); }
 
 // ========================================================================
 // Files Page
 // ========================================================================
-let currentFilePath = null;
-
-function loadFileTree(dirPath) {
-  const tree = document.getElementById('fileTree');
-  tree.innerHTML = '<div style="color: var(--fg-muted); padding: 12px;">Loading...</div>';
-
-  fetch(`/api/files?path=${encodeURIComponent(dirPath || '')}`)
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) {
-        tree.innerHTML = `<div style="color: var(--accent-red); padding: 12px;">${escapeHtml(data.error)}</div>`;
-        return;
-      }
-      state.currentDir = data.path;
-      renderFileTree(data.path, data.items);
-    })
-    .catch(err => {
-      tree.innerHTML = `<div style="color: var(--accent-red); padding: 12px;">${escapeHtml(err.message)}</div>`;
-    });
+function loadFileTree(dir) {
+  const t = document.getElementById('fileTree'); t.innerHTML = '<div style="color:var(--fg-muted);padding:12px">Loading...</div>';
+  fetchApi(`/api/files?path=${encodeURIComponent(dir||'')}`).then(d => {
+    if (d.error) { t.innerHTML = `<div style="color:var(--accent-red);padding:12px">${escapeHtml(d.error)}</div>`; return; }
+    G.currentDir = d.path;
+    const par = d.path.replace(/[/\\][^/\\]+$/, '') || d.path;
+    let h = `<div class="file-tree-item" onclick="loadFileTree('${par.replace(/\\/g,'\\\\')}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg><span style="color:var(--fg-muted)">..</span></div>`;
+    for (const i of d.items) {
+      const ic = i.isDirectory ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+      const ep = i.path.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      h += `<div class="file-tree-item ${i.isDirectory?'directory':''}" onclick="${i.isDirectory?`loadFileTree('${ep}')`:`loadFilePreview('${ep}')`}">${ic}<span>${escapeHtml(i.name)}</span></div>`;
+    }
+    t.innerHTML = h;
+  }).catch(e => { t.innerHTML = `<div style="color:var(--accent-red);padding:12px">${escapeHtml(e.message)}</div>`; });
 }
 
-function renderFileTree(dirPath, items) {
-  const tree = document.getElementById('fileTree');
-  const parentDir = dirPath.replace(/[/\\][^/\\]+$/, '') || dirPath;
-
-  let html = `
-    <div class="file-tree-item" onclick="loadFileTree('${escapeHtml(parentDir.replace(/\\/g, '\\\\'))}')">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-      <span style="color: var(--fg-muted);">..</span>
-    </div>
-  `;
-
-  for (const item of items) {
-    const icon = item.isDirectory
-      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
-      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
-
-    const escapedPath = item.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    const onclick = item.isDirectory
-      ? `loadFileTree('${escapedPath}')`
-      : `loadFilePreview('${escapedPath}')`;
-
-    html += `
-      <div class="file-tree-item ${item.isDirectory ? 'directory' : ''}" onclick="${onclick}">
-        ${icon}
-        <span>${escapeHtml(item.name)}</span>
-      </div>
-    `;
-  }
-
-  tree.innerHTML = html;
-}
-
-function loadFilePreview(filePath) {
-  currentFilePath = filePath;
-  const preview = document.getElementById('filePreview');
-  preview.innerHTML = '<div style="color: var(--fg-muted); padding: 20px;">Loading...</div>';
-
-  fetch(`/api/file?path=${encodeURIComponent(filePath)}`)
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) {
-        preview.innerHTML = `<div style="color: var(--accent-red); padding: 20px;">${escapeHtml(data.error)}</div>`;
-        return;
-      }
-      preview.innerHTML = `
-        <div style="margin-bottom: 8px; font-size: 12px; color: var(--fg-muted); display: flex; justify-content: space-between;">
-          <span>${escapeHtml(data.path)}</span>
-          <span>${(data.size / 1024).toFixed(1)} KB</span>
-        </div>
-        <pre class="file-preview-content">${escapeHtml(data.content)}</pre>
-      `;
-    })
-    .catch(err => {
-      preview.innerHTML = `<div style="color: var(--accent-red); padding: 20px;">${escapeHtml(err.message)}</div>`;
-    });
+function loadFilePreview(p) {
+  const pv = document.getElementById('filePreview'); pv.innerHTML = '<div style="color:var(--fg-muted);padding:20px">Loading...</div>';
+  fetchApi(`/api/file?path=${encodeURIComponent(p)}`).then(d => {
+    if (d.error) { pv.innerHTML = `<div style="color:var(--accent-red);padding:20px">${escapeHtml(d.error)}</div>`; return; }
+    pv.innerHTML = `<div style="margin-bottom:8px;font-size:12px;color:var(--fg-muted);display:flex;justify-content:space-between"><span>${escapeHtml(d.path)}</span><span>${(d.size/1024).toFixed(1)} KB</span></div><pre class="file-preview-content">${escapeHtml(d.content)}</pre>`;
+  }).catch(e => { pv.innerHTML = `<div style="color:var(--accent-red);padding:20px">${escapeHtml(e.message)}</div>`; });
 }
 
 // ========================================================================
 // Config Page
 // ========================================================================
 function renderConfig() {
-  const container = document.getElementById('configContainer');
-  const s = state.sessionState;
-  if (!s) return;
-
-  container.innerHTML = `
-    <div class="config-section">
-      <div class="config-section-title">Session</div>
-      <div class="config-item">
-        <span class="config-key">session.id</span>
-        <span class="config-value">${s.sessionId || 'N/A'}</span>
-      </div>
-      <div class="config-item">
-        <span class="config-key">session.name</span>
-        <span class="config-value">${s.sessionName || 'N/A'}</span>
-      </div>
-      <div class="config-item">
-        <span class="config-key">session.file</span>
-        <span class="config-value">${s.sessionFile || 'N/A'}</span>
-      </div>
-      <div class="config-item">
-        <span class="config-key">messages</span>
-        <span class="config-value">${s.messageCount}</span>
-      </div>
-    </div>
-    <div class="config-section">
-      <div class="config-section-title">Model</div>
-      <div class="config-item">
-        <span class="config-key">model</span>
-        <span class="config-value">${s.model ? `${s.model.provider}/${s.model.id}` : 'None'}</span>
-      </div>
-      <div class="config-item">
-        <span class="config-key">thinking</span>
-        <span class="config-value">${s.thinkingLevel}</span>
-      </div>
-    </div>
-    <div class="config-section">
-      <div class="config-section-title">Options</div>
-      <div class="config-item">
-        <span class="config-key">autoCompaction</span>
-        <span class="config-value">${s.autoCompactionEnabled}</span>
-      </div>
-      <div class="config-item">
-        <span class="config-key">steeringMode</span>
-        <span class="config-value">${s.steeringMode}</span>
-      </div>
-      <div class="config-item">
-        <span class="config-key">followUpMode</span>
-        <span class="config-value">${s.followUpMode}</span>
-      </div>
-    </div>
-  `;
+  const c = document.getElementById('configContainer');
+  const s = S()?.session; if (!s) return;
+  c.innerHTML = `<div class="config-section"><div class="config-section-title">Session</div>
+    <div class="config-item"><span class="config-key">id</span><span class="config-value">${s.sessionId||'N/A'}</span></div>
+    <div class="config-item"><span class="config-key">name</span><span class="config-value">${s.sessionName||'N/A'}</span></div>
+    <div class="config-item"><span class="config-key">file</span><span class="config-value">${s.sessionFile||'N/A'}</span></div>
+    <div class="config-item"><span class="config-key">messages</span><span class="config-value">${s.messageCount}</span></div></div>
+    <div class="config-section"><div class="config-section-title">Model</div>
+    <div class="config-item"><span class="config-key">model</span><span class="config-value">${s.model?s.model.provider+'/'+s.model.id:'None'}</span></div>
+    <div class="config-item"><span class="config-key">thinking</span><span class="config-value">${s.thinkingLevel}</span></div></div>`;
 }
 
 // ========================================================================
 // Logs Page
 // ========================================================================
 function renderLogs() {
-  const container = document.getElementById('logsContainer');
-  const filter = state.logFilter || 'all';
-  const filtered = filter === 'all' ? state.logs : state.logs.filter(l => l.level === filter);
-
-  container.innerHTML = `
-    <div style="margin-bottom: 12px; display: flex; gap: 6px; flex-wrap: wrap;">
-      ${['all', 'info', 'warn', 'error'].map(f =>
-        `<button class="thinking-btn ${filter === f ? 'active' : ''}" onclick="setLogFilter('${f}')">${f}</button>`
-      ).join('')}
-    </div>
-    ${filtered.length === 0 ? '<div style="color: var(--fg-muted); padding: 20px; text-align: center;">No logs</div>' :
-      filtered.map(l => `
-        <div class="log-entry ${l.level}">
-          <span class="log-timestamp">${l.time.toLocaleTimeString()}</span>
-          ${escapeHtml(l.message)}
-        </div>
-      `).join('')}
-  `;
-  container.scrollTop = container.scrollHeight;
+  const c = document.getElementById('logsContainer');
+  const f = G.logFilter || 'all';
+  const fl = f === 'all' ? G.logs : G.logs.filter(l => l.level === f);
+  c.innerHTML = `<div style="margin-bottom:12px;display:flex;gap:6px;flex-wrap:wrap">${['all','info','warn','error'].map(x => `<button class="thinking-btn ${f===x?'active':''}" onclick="setLogFilter('${x}')">${x}</button>`).join('')}</div>` +
+    (fl.length ? fl.map(l => `<div class="log-entry ${l.level}"><span class="log-timestamp">${l.time.toLocaleTimeString()}</span> ${escapeHtml(l.message)}</div>`).join('') : '<div style="color:var(--fg-muted);padding:20px;text-align:center">No logs</div>');
+  c.scrollTop = c.scrollHeight;
 }
-
-function setLogFilter(filter) {
-  state.logFilter = filter;
-  renderLogs();
-}
+function setLogFilter(f) { G.logFilter = f; renderLogs(); }
 
 // ========================================================================
 // Dashboard Page
 // ========================================================================
 function renderDashboard() {
-  const container = document.getElementById('dashboardContainer');
-  const s = state.sessionState;
-  if (!s) return;
-
-  const toolCount = state.toolExecutions.size;
-  const statusColor = s.isStreaming ? 'var(--accent-warm)' : 'var(--accent-green)';
-  const statusText = s.isStreaming ? 'Streaming' : s.isCompacting ? 'Compacting' : 'Idle';
-
-  container.innerHTML = `
-    <div class="stat-card">
-      <div class="stat-label">Messages</div>
-      <div class="stat-value">${s.messageCount}</div>
-      <div class="stat-sub">${s.pendingMessageCount} pending in queue</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Model</div>
-      <div class="stat-value" style="font-size: 18px;">${s.model?.id || 'None'}</div>
-      <div class="stat-sub">${s.model?.provider || 'No provider'}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Thinking Level</div>
-      <div class="stat-value" style="font-size: 22px;">${s.thinkingLevel}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Status</div>
-      <div class="stat-value" style="font-size: 18px; color: ${statusColor};">${statusText}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Tool Calls</div>
-      <div class="stat-value">${toolCount}</div>
-      <div class="stat-sub">this session</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Session</div>
-      <div class="stat-value" style="font-size: 14px; word-break: break-all;">${s.sessionName || s.sessionId?.slice(0, 12) || 'N/A'}</div>
-      <div class="stat-sub">${s.autoCompactionEnabled ? 'Auto-compaction on' : 'Auto-compaction off'}</div>
-    </div>
-  `;
+  const c = document.getElementById('dashboardContainer');
+  const s = S()?.session; if (!s) return;
+  const sc = s.isStreaming ? 'var(--accent-warm)' : 'var(--accent-green)';
+  const st = s.isStreaming ? 'Streaming' : s.isCompacting ? 'Compacting' : 'Idle';
+  c.innerHTML = `<div class="stat-card"><div class="stat-label">Messages</div><div class="stat-value">${s.messageCount}</div><div class="stat-sub">${s.pendingMessageCount} pending</div></div>
+    <div class="stat-card"><div class="stat-label">Model</div><div class="stat-value" style="font-size:18px">${s.model?.id||'None'}</div><div class="stat-sub">${s.model?.provider||''}</div></div>
+    <div class="stat-card"><div class="stat-label">Thinking</div><div class="stat-value" style="font-size:22px">${s.thinkingLevel}</div></div>
+    <div class="stat-card"><div class="stat-label">Status</div><div class="stat-value" style="font-size:18px;color:${sc}">${st}</div></div>`;
 }
 
 // ========================================================================
-// Skills Page
+// Skills & Plugins Pages
 // ========================================================================
 function renderSkills() {
-  const container = document.getElementById('skillsContainer');
-  container.innerHTML = '<div style="color: var(--fg-muted); padding: 20px; text-align: center;">Loading...</div>';
-
-  fetch('/api/skills')
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) {
-        container.innerHTML = `<div style="color: var(--accent-red); padding: 20px;">${escapeHtml(data.error)}</div>`;
-        return;
-      }
-      if (!data.skills || data.skills.length === 0) {
-        container.innerHTML = '<div style="color: var(--fg-muted); padding: 20px; text-align: center;">No skills installed</div>';
-        return;
-      }
-
-      container.innerHTML = `
-        <div style="padding: 16px 24px;">
-          <div style="font-size: 13px; color: var(--fg-muted); margin-bottom: 16px;">${data.skills.length} skill(s) available</div>
-          <div style="display: flex; flex-direction: column; gap: 8px;">
-            ${data.skills.map(s => `
-              <div class="session-item">
-                <svg class="session-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-                <div class="session-info">
-                  <div class="session-name">skill:${escapeHtml(s.name)}</div>
-                  <div class="session-meta">${escapeHtml(s.description || 'No description')}</div>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      `;
-    })
-    .catch(err => {
-      container.innerHTML = `<div style="color: var(--accent-red); padding: 20px;">${escapeHtml(err.message)}</div>`;
-    });
+  const c = document.getElementById('skillsContainer'); c.innerHTML = '<div style="color:var(--fg-muted);padding:20px;text-align:center">Loading...</div>';
+  fetchApi('/api/skills').then(d => {
+    if (!d.skills?.length) { c.innerHTML = '<div style="color:var(--fg-muted);padding:20px;text-align:center">No skills</div>'; return; }
+    c.innerHTML = `<div style="padding:16px 24px"><div style="font-size:13px;color:var(--fg-muted);margin-bottom:16px">${d.skills.length} skill(s)</div><div style="display:flex;flex-direction:column;gap:8px">${d.skills.map(s => `<div class="session-item"><div class="session-info"><div class="session-name">skill:${escapeHtml(s.name)}</div><div class="session-meta">${escapeHtml(s.description||'')}</div></div></div>`).join('')}</div></div>`;
+  });
 }
 
-// ========================================================================
-// Plugins Page
-// ========================================================================
 function renderPlugins() {
-  const container = document.getElementById('pluginsContainer');
-  container.innerHTML = '<div style="color: var(--fg-muted); padding: 20px; text-align: center;">Loading...</div>';
-
-  fetch('/api/extensions')
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) {
-        container.innerHTML = `<div style="color: var(--accent-red); padding: 20px;">${escapeHtml(data.error)}</div>`;
-        return;
-      }
-      if (!data.extensions || data.extensions.length === 0) {
-        container.innerHTML = '<div style="color: var(--fg-muted); padding: 20px; text-align: center;">No extensions/plugins loaded</div>';
-        return;
-      }
-
-      container.innerHTML = `
-        <div style="padding: 16px 24px;">
-          <div style="font-size: 13px; color: var(--fg-muted); margin-bottom: 16px;">${data.extensions.length} extension(s) loaded</div>
-          <div style="display: flex; flex-direction: column; gap: 8px;">
-            ${data.extensions.map(e => `
-              <div class="session-item">
-                <svg class="session-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-                <div class="session-info">
-                  <div class="session-name">/${escapeHtml(e.name)}</div>
-                  <div class="session-meta">${escapeHtml(e.description || 'No description')}${e.path ? ' · ' + escapeHtml(e.path.split(/[/\\]/).pop()) : ''}</div>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      `;
-    })
-    .catch(err => {
-      container.innerHTML = `<div style="color: var(--accent-red); padding: 20px;">${escapeHtml(err.message)}</div>`;
-    });
+  const c = document.getElementById('pluginsContainer'); c.innerHTML = '<div style="color:var(--fg-muted);padding:20px;text-align:center">Loading...</div>';
+  fetchApi('/api/extensions').then(d => {
+    if (!d.extensions?.length) { c.innerHTML = '<div style="color:var(--fg-muted);padding:20px;text-align:center">No extensions</div>'; return; }
+    c.innerHTML = `<div style="padding:16px 24px"><div style="font-size:13px;color:var(--fg-muted);margin-bottom:16px">${d.extensions.length} extension(s)</div><div style="display:flex;flex-direction:column;gap:8px">${d.extensions.map(e => `<div class="session-item"><div class="session-info"><div class="session-name">/${escapeHtml(e.name)}</div><div class="session-meta">${escapeHtml(e.description||'')}</div></div></div>`).join('')}</div></div>`;
+  });
 }
 
 // ========================================================================
@@ -1996,33 +1531,21 @@ document.addEventListener('DOMContentLoaded', () => {
   // Chat input
   const input = document.getElementById('chatInput');
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   });
-
-  // Auto-resize textarea
-  input.addEventListener('input', () => {
-    input.style.height = 'auto';
-    input.style.height = Math.min(input.scrollHeight, 200) + 'px';
-  });
+  input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 200) + 'px'; });
 
   // Buttons
   document.getElementById('sendBtn').addEventListener('click', sendMessage);
   document.getElementById('abortBtn').addEventListener('click', abortAgent);
   document.getElementById('newSessionBtn').addEventListener('click', newSession);
   document.getElementById('refreshSessionsBtn').addEventListener('click', renderSessions);
-  document.getElementById('clearLogsBtn').addEventListener('click', () => {
-    state.logs = [];
-    renderLogs();
-  });
+  document.getElementById('clearLogsBtn').addEventListener('click', () => { G.logs = []; renderLogs(); });
   document.getElementById('refreshSkillsBtn').addEventListener('click', renderSkills);
   document.getElementById('refreshPluginsBtn').addEventListener('click', renderPlugins);
 
   // Load servers and connect
   loadServers();
-  connect();
 });
 </script>
 </body>
