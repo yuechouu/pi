@@ -3,7 +3,7 @@ name: Sync Upstream
 on:
   schedule:
     - cron: '0 */6 * * *'  # Every 6 hours
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
   sync:
@@ -28,13 +28,9 @@ jobs:
         id: merge
         run: |
           git checkout main
-          git merge upstream/main --no-edit --no-commit || true
-          if git diff --check; then
-            # No conflicts, commit the merge
-            git commit -m "merge: sync with upstream"
+          if git merge upstream/main --no-edit; then
             echo "conflict=false" >> $GITHUB_OUTPUT
           else
-            # Conflicts detected
             CONFLICT_FILES=$(git diff --name-only --diff-filter=U | tr '\n' ', ' | sed 's/,$//')
             echo "conflict_files=$CONFLICT_FILES" >> $GITHUB_OUTPUT
             git merge --abort
