@@ -55,6 +55,7 @@
 		"proper-lockfile": "4.1.2",
 		"typebox": "1.1.38",
 		"undici": "8.3.0",
+		"ws": "8.18.3",
 		"yaml": "2.9.0"
 	},
 	"overrides": {
@@ -72,6 +73,7 @@
 		"@types/hosted-git-info": "3.0.5",
 		"@types/ms": "2.1.0",
 		"@types/node": "24.12.4",
+		"@types/ws": "8.18.1",
 		"@types/proper-lockfile": "4.1.4",
 		"shx": "0.4.0",
 		"typescript": "5.9.3",

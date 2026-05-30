@@ -977,7 +977,7 @@ export class TUI extends Container {
 		// Truncate main content to leave space for sidebar overlay
 		if (this.sidebarWidth > 0) {
 			const mainWidth = width - this.sidebarWidth;
-			newLines = newLines.map(line => {
+			newLines = newLines.map((line) => {
 				const vw = visibleWidth(line);
 				if (vw > mainWidth) {
 					return sliceByColumn(line, 0, mainWidth, true);
