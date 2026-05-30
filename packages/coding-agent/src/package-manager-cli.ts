@@ -10,6 +10,7 @@ import {
 	getSelfUpdateUnavailableInstruction,
 	PACKAGE_NAME,
 	type SelfUpdateCommand,
+	setLatestReleaseVersion,
 	VERSION,
 } from "./config.ts";
 import { DefaultPackageManager } from "./core/package-manager.ts";
