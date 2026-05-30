@@ -7763,7 +7763,9 @@ export const MODELS = {
 			api: "openai-completions",
 			provider: "opencode",
 			baseUrl: "https://opencode.ai/zen/v1",
+			compat: {"supportsReasoningEffort":false},
 			reasoning: true,
+			thinkingLevelMap: {"off":null,"minimal":null,"low":null,"medium":null},
 			input: ["text", "image"],
 			cost: {
 				input: 1,
@@ -7797,6 +7799,7 @@ export const MODELS = {
 			api: "openai-completions",
 			provider: "opencode",
 			baseUrl: "https://opencode.ai/zen/v1",
+			compat: {"thinkingFormat":"deepseek","supportsReasoningEffort":false},
 			reasoning: true,
 			input: ["text", "image"],
 			cost: {
@@ -8007,9 +8010,9 @@ export const MODELS = {
 			api: "openai-completions",
 			provider: "opencode-go",
 			baseUrl: "https://opencode.ai/zen/go/v1",
-			compat: {"thinkingFormat":"string-thinking"},
+			compat: {"thinkingFormat":"deepseek","supportsReasoningEffort":false},
 			reasoning: true,
-			thinkingLevelMap: {"off":"none"},
+			thinkingLevelMap: {"minimal":null,"low":null,"medium":null},
 			input: ["text", "image"],
 			cost: {
 				input: 0.95,
@@ -9963,6 +9966,7 @@ export const MODELS = {
 			api: "openai-completions",
 			provider: "openrouter",
 			baseUrl: "https://openrouter.ai/api/v1",
+			compat: {"supportsDeveloperRole":false},
 			reasoning: true,
 			input: ["text", "image"],
 			cost: {
@@ -9980,6 +9984,7 @@ export const MODELS = {
 			api: "openai-completions",
 			provider: "openrouter",
 			baseUrl: "https://openrouter.ai/api/v1",
+			compat: {"supportsDeveloperRole":false},
 			reasoning: true,
 			input: ["text", "image"],
 			cost: {
