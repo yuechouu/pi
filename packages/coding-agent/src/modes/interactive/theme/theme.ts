@@ -742,6 +742,28 @@ export function getDefaultTheme(): string {
 }
 
 // ============================================================================
+// Terminal Background
+// ============================================================================
+
+/**
+ * Set terminal background color using OSC 11 escape sequence.
+ * This changes the terminal's actual background color, not just the pi-agent theme.
+ */
+export function setTerminalBackground(hex: string): void {
+	// OSC 11: Set terminal background color
+	// Format: \x1b]11;#RRGGBB\x07
+	process.stdout.write(`\x1b]11;${hex}\x07`);
+}
+
+/**
+ * Reset terminal background to default.
+ */
+export function resetTerminalBackground(): void {
+	// OSC 11: Reset to default
+	process.stdout.write("\x1b]11;default\x07");
+}
+
+// ============================================================================
 // Global Theme Instance
 // ============================================================================
 
@@ -786,6 +808,11 @@ export function initTheme(themeName?: string, enableWatcher: boolean = false): v
 		setGlobalTheme(loadTheme(name));
 		if (enableWatcher) {
 			startThemeWatcher();
+		}
+		// Set terminal background if theme has pageBg in export section
+		const themeJson = loadThemeJson(name);
+		if (themeJson.export?.pageBg && typeof themeJson.export.pageBg === "string") {
+			setTerminalBackground(themeJson.export.pageBg);
 		}
 	} catch (_error) {
 		// Theme is invalid - fall back to dark theme silently
