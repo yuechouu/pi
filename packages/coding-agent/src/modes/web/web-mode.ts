@@ -559,6 +559,71 @@ export async function runWebMode(
 			return;
 		}
 
+		// REST API: GET /api/skills
+		if (url.pathname === "/api/skills" && req.method === "GET") {
+			try {
+				const skills = session.resourceLoader.getSkills().skills;
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({
+					skills: skills.map((s) => ({
+						name: s.name,
+						description: s.description,
+						sourceInfo: s.sourceInfo,
+					})),
+				}));
+			} catch (err: unknown) {
+				res.writeHead(500, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+			}
+			return;
+		}
+
+		// REST API: GET /api/commands
+		if (url.pathname === "/api/commands" && req.method === "GET") {
+			try {
+				const commands: Array<{ name: string; description?: string; source: string }> = [];
+
+				for (const cmd of session.extensionRunner.getRegisteredCommands()) {
+					commands.push({ name: cmd.invocationName, description: cmd.description, source: "extension" });
+				}
+				for (const template of session.promptTemplates) {
+					commands.push({ name: template.name, description: template.description, source: "prompt" });
+				}
+				for (const skill of session.resourceLoader.getSkills().skills) {
+					commands.push({ name: `skill:${skill.name}`, description: skill.description, source: "skill" });
+				}
+
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ commands }));
+			} catch (err: unknown) {
+				res.writeHead(500, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+			}
+			return;
+		}
+
+		// REST API: GET /api/extensions
+		if (url.pathname === "/api/extensions" && req.method === "GET") {
+			try {
+				const commands = session.extensionRunner.getRegisteredCommands();
+				// Deduplicate by source path
+				const seen = new Set<string>();
+				const extensions = commands
+					.filter((c) => c.sourceInfo?.path && !seen.has(c.sourceInfo.path) && seen.add(c.sourceInfo.path))
+					.map((c) => ({
+						name: c.invocationName,
+						description: c.description,
+						path: c.sourceInfo?.path,
+					}));
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ extensions }));
+			} catch (err: unknown) {
+				res.writeHead(500, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+			}
+			return;
+		}
+
 		// 404
 		res.writeHead(404, { "Content-Type": "application/json" });
 		res.end(JSON.stringify({ error: "Not found" }));
