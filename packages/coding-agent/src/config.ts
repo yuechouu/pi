@@ -319,20 +319,12 @@ function getGitHubUpdateCommand(packageName: string): SelfUpdateCommand | undefi
 	const tgzName = `${packageName}.tgz`;
 	const downloadUrl = `https://github.com/${repo}/releases/download/v${version}/${tgzName}`;
 
-	const method = detectInstallMethod();
-	const [command = "npm", ...npmArgs] = [];
-
-	switch (method) {
-		case "npm": {
-			const inferred = getInferredNpmInstall();
-			const prefixArgs = [...npmArgs, ...(inferred ? ["--prefix", inferred.prefix] : [])];
-			return makeSelfUpdateCommand(
-				makeSelfUpdateCommandStep(command, [...prefixArgs, "install", "-g", "--ignore-scripts", downloadUrl]),
-			);
-		}
-		default:
-			return undefined;
-	}
+	// Use npm install -g regardless of detected install method
+	const inferred = getInferredNpmInstall();
+	const prefixArgs = inferred ? ["--prefix", inferred.prefix] : [];
+	return makeSelfUpdateCommand(
+		makeSelfUpdateCommandStep("npm", [...prefixArgs, "install", "-g", "--ignore-scripts", downloadUrl]),
+	);
 }
 
 export function getSelfUpdateUnavailableInstruction(
