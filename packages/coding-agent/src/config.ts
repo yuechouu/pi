@@ -296,7 +296,7 @@ export function getSelfUpdateCommand(
 ): SelfUpdateCommand | undefined {
 	// Support GitHub releases: PI_UPDATE_URL=https://github.com/user/repo
 	if (process.env.PI_UPDATE_URL?.startsWith("https://github.com/")) {
-		return getGitHubUpdateCommand(updatePackageName);
+		return getGitHubUpdateCommand(packageName, updatePackageName);
 	}
 
 	const method = detectInstallMethod();
@@ -307,16 +307,28 @@ export function getSelfUpdateCommand(
 	return command;
 }
 
-function getGitHubUpdateCommand(packageName: string): SelfUpdateCommand | undefined {
+function getGitHubUpdateCommand(packageName: string, updatePackageName: string): SelfUpdateCommand | undefined {
 	const repoUrl = process.env.PI_UPDATE_URL!;
 	const match = repoUrl.match(/github\.com\/([^/]+\/[^/]+)/);
 	if (!match) return undefined;
 	const repo = match[1];
 
-	// Construct GitHub release tgz URL
-	// earendil-works-pi-coding-agent-0.77.0.tgz -> https://github.com/user/repo/releases/download/vX.Y.Z/name.tgz
-	const version = packageName.match(/(\d+\.\d+\.\d+)/)?.[1] || "latest";
-	const tgzName = `${packageName}.tgz`;
+	// Use the tgz asset name from release (updatePackageName) which contains the version
+	// e.g., "earendil-works-pi-coding-agent-0.77.0" -> download from release
+	let tgzName: string;
+	let version: string;
+
+	if (updatePackageName.includes("-")) {
+		// updatePackageName is like "earendil-works-pi-coding-agent-0.77.0"
+		const versionMatch = updatePackageName.match(/(\d+\.\d+\.\d+)$/);
+		version = versionMatch?.[1] || "latest";
+		tgzName = `${updatePackageName}.tgz`;
+	} else {
+		// Fallback: use PACKAGE_NAME and current version
+		version = VERSION;
+		tgzName = `${packageName.replace(/\//g, "-").replace(/^@/, "")}-${version}.tgz`;
+	}
+
 	const downloadUrl = `https://github.com/${repo}/releases/download/v${version}/${tgzName}`;
 
 	// Use npm install -g regardless of detected install method
