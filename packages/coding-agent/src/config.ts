@@ -299,12 +299,26 @@ export function getSelfUpdateCommand(
 		return getGitHubUpdateCommand(packageName, updatePackageName);
 	}
 
+	// Support npm package: PI_NPM_PACKAGE=pi-coding-agent-yuechouu
+	const npmPackage = process.env.PI_NPM_PACKAGE || (process.env.PI_UPDATE_URL === "npm" ? "pi-coding-agent-yuechouu" : null);
+	if (npmPackage) {
+		return getNpmUpdateCommand(npmPackage);
+	}
+
 	const method = detectInstallMethod();
 	const command = getSelfUpdateCommandForMethod(method, packageName, updatePackageName, npmCommand);
 	if (!command || !isManagedByGlobalPackageManager(method, packageName, npmCommand) || !isSelfUpdatePathWritable()) {
 		return undefined;
 	}
 	return command;
+}
+
+function getNpmUpdateCommand(packageName: string): SelfUpdateCommand | undefined {
+	const inferred = getInferredNpmInstall();
+	const prefixArgs = inferred ? ["--prefix", inferred.prefix] : [];
+	return makeSelfUpdateCommand(
+		makeSelfUpdateCommandStep("npm", [...prefixArgs, "install", "-g", "--ignore-scripts", packageName]),
+	);
 }
 
 // Store the latest release version for URL construction

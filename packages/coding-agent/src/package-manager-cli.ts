@@ -546,7 +546,8 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
 					}
 					const installMethod = detectInstallMethod();
 					const useGitHubUpdate = process.env.PI_UPDATE_URL?.startsWith("https://github.com/");
-						if (process.platform === "win32" && installMethod !== "npm" && installMethod !== "pnpm" && !useGitHubUpdate) {
+						const useNpmUpdate = process.env.PI_NPM_PACKAGE || process.env.PI_UPDATE_URL === "npm";
+						if (process.platform === "win32" && installMethod !== "npm" && installMethod !== "pnpm" && !useGitHubUpdate && !useNpmUpdate) {
 						console.error(
 							chalk.red(`${APP_NAME} self-update on Windows is only supported for npm and pnpm installs.`),
 						);

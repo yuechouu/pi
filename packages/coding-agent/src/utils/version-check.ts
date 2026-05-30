@@ -2,6 +2,7 @@ import { getPiUserAgent } from "./pi-user-agent.ts";
 
 const DEFAULT_LATEST_VERSION_URL = "https://pi.dev/api/latest-version";
 const LATEST_VERSION_URL = process.env.PI_UPDATE_URL || DEFAULT_LATEST_VERSION_URL;
+const NPM_PACKAGE_NAME = process.env.PI_NPM_PACKAGE || "pi-coding-agent-yuechouu";
 const DEFAULT_VERSION_CHECK_TIMEOUT_MS = 10000;
 
 export interface LatestPiRelease {
@@ -65,6 +66,11 @@ export async function getLatestPiRelease(
 		return getLatestReleaseFromGithub(LATEST_VERSION_URL, options);
 	}
 
+	// Check npm registry for custom package
+	if (NPM_PACKAGE_NAME !== "pi-coding-agent-yuechouu" || !LATEST_VERSION_URL.startsWith("https://pi.dev")) {
+		return getLatestReleaseFromNpm(NPM_PACKAGE_NAME, options);
+	}
+
 	const response = await fetch(LATEST_VERSION_URL, {
 		headers: {
 			"User-Agent": getPiUserAgent(currentVersion),
@@ -89,6 +95,34 @@ export async function getLatestPiRelease(
 		version: data.version.trim(),
 		packageName,
 		...(note ? { note } : {}),
+	};
+}
+
+async function getLatestReleaseFromNpm(
+	packageName: string,
+	options: { timeoutMs?: number } = {},
+): Promise<LatestPiRelease | undefined> {
+	const registryUrl = process.env.PI_NPM_REGISTRY || "https://registry.npmjs.org";
+	const apiUrl = `${registryUrl}/${packageName}/latest`;
+
+	const response = await fetch(apiUrl, {
+		headers: {
+			accept: "application/json",
+		},
+		signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_VERSION_CHECK_TIMEOUT_MS),
+	});
+	if (!response.ok) return undefined;
+
+	const data = (await response.json()) as {
+		version?: unknown;
+	};
+	if (typeof data.version !== "string" || !data.version.trim()) {
+		return undefined;
+	}
+
+	return {
+		version: data.version.trim(),
+		packageName,
 	};
 }
 
