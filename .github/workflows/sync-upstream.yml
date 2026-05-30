@@ -28,10 +28,13 @@ jobs:
         id: merge
         run: |
           git checkout main
-          if git merge upstream/main --no-edit; then
+          git merge upstream/main --no-edit --no-commit || true
+          if git diff --check; then
+            # No conflicts, commit the merge
+            git commit -m "merge: sync with upstream"
             echo "conflict=false" >> $GITHUB_OUTPUT
           else
-            # Get list of conflicting files
+            # Conflicts detected
             CONFLICT_FILES=$(git diff --name-only --diff-filter=U | tr '\n' ', ' | sed 's/,$//')
             echo "conflict_files=$CONFLICT_FILES" >> $GITHUB_OUTPUT
             git merge --abort
