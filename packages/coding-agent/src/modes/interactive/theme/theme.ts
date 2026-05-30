@@ -89,6 +89,9 @@ const ThemeJsonSchema = Type.Object({
 		thinkingXhigh: ColorValueSchema,
 		// Bash Mode (1 color)
 		bashMode: ColorValueSchema,
+		// Message Borders (2 colors)
+		userMessageBorder: ColorValueSchema,
+		assistantMessageBorder: ColorValueSchema,
 	}),
 	export: Type.Optional(
 		Type.Object({
@@ -148,7 +151,9 @@ export type ThemeColor =
 	| "thinkingMedium"
 	| "thinkingHigh"
 	| "thinkingXhigh"
-	| "bashMode";
+	| "bashMode"
+	| "userMessageBorder"
+	| "assistantMessageBorder";
 
 export type ThemeBg =
 	| "selectedBg"

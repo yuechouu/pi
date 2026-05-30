@@ -35,6 +35,12 @@ export class UserMessageComponent extends Container {
 			return lines;
 		}
 
+		// Add purple left border
+		const border = theme.fg("userMessageBorder", "│");
+		for (let i = 0; i < lines.length; i++) {
+			lines[i] = `${border} ${lines[i]}`;
+		}
+
 		lines[0] = OSC133_ZONE_START + lines[0];
 		lines[lines.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + lines[lines.length - 1];
 		return lines;
