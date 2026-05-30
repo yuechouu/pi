@@ -192,7 +192,7 @@ function getRenderablePreviewInput(args: RenderableEditArgs | undefined): { path
 	return null;
 }
 
-function formatEditCall(
+function _formatEditCall(
 	args: RenderableEditArgs | undefined,
 	theme: typeof import("../../modes/interactive/theme/theme.ts").theme,
 	cwd: string,
@@ -233,9 +233,9 @@ function formatEditResult(
 }
 
 function getEditHeaderBg(
-	preview: EditPreview | undefined,
-	settledError: boolean | undefined,
-	theme: Theme,
+	_preview: EditPreview | undefined,
+	_settledError: boolean | undefined,
+	_theme: Theme,
 ): (text: string) => string {
 	// Crush-style: no colored background, use icons instead
 	return (text: string) => text;

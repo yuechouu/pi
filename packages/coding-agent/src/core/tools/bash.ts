@@ -176,7 +176,7 @@ function formatDuration(ms: number): string {
 	return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function formatBashCall(args: { command?: string; timeout?: number } | undefined): string {
+function _formatBashCall(args: { command?: string; timeout?: number } | undefined): string {
 	const command = str(args?.command);
 	const timeout = args?.timeout as number | undefined;
 	const timeoutSuffix = timeout ? theme.fg("muted", ` (timeout ${timeout}s)`) : "";
@@ -432,7 +432,7 @@ export function createBashToolDefinition(
 			}
 
 			// Update icon to success/error
-			const callText = (context.lastComponent as Text | undefined);
+			const callText = context.lastComponent as Text | undefined;
 			if (callText && !options.isPartial) {
 				const command = str((context as any).args?.command) ?? "...";
 				const icon = context.isError ? theme.fg("error", "×") : theme.fg("success", "✓");

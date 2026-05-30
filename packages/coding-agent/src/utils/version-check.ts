@@ -56,7 +56,7 @@ export function isNewerPackageVersion(candidateVersion: string, currentVersion: 
 }
 
 export async function getLatestPiRelease(
-	currentVersion: string,
+	_currentVersion: string,
 	options: { timeoutMs?: number } = {},
 ): Promise<LatestPiRelease | undefined> {
 	if (process.env.PI_SKIP_VERSION_CHECK || process.env.PI_OFFLINE) return undefined;

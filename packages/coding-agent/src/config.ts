@@ -291,7 +291,7 @@ function isManagedByGlobalPackageManager(method: InstallMethod, packageName: str
 
 export function getSelfUpdateCommand(
 	packageName: string,
-	npmCommand?: string[],
+	_npmCommand?: string[],
 	updatePackageName = packageName,
 ): SelfUpdateCommand | undefined {
 	// Support GitHub releases: PI_UPDATE_URL=https://github.com/user/repo
@@ -319,7 +319,7 @@ export function setLatestReleaseVersion(version: string): void {
 	latestReleaseVersion = version;
 }
 
-function getGitHubUpdateCommand(packageName: string, updatePackageName: string): SelfUpdateCommand | undefined {
+function getGitHubUpdateCommand(_packageName: string, updatePackageName: string): SelfUpdateCommand | undefined {
 	const repoUrl = process.env.PI_UPDATE_URL!;
 	const match = repoUrl.match(/github\.com\/([^/]+\/[^/]+)/);
 	if (!match) return undefined;

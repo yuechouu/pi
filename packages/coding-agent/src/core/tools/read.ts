@@ -156,7 +156,8 @@ function formatCompactReadCall(
 
 	// Crush-style: ● Read <kind> <label>
 	return (
-		theme.fg("success", "●") + " " +
+		theme.fg("success", "●") +
+		" " +
 		theme.fg("toolTitle", theme.bold(`Read ${classification.kind}`)) +
 		" " +
 		theme.fg("accent", classification.label) +
