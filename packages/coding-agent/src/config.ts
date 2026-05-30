@@ -294,12 +294,45 @@ export function getSelfUpdateCommand(
 	npmCommand?: string[],
 	updatePackageName = packageName,
 ): SelfUpdateCommand | undefined {
+	// Support GitHub releases: PI_UPDATE_URL=https://github.com/user/repo
+	if (process.env.PI_UPDATE_URL?.startsWith("https://github.com/")) {
+		return getGitHubUpdateCommand(updatePackageName);
+	}
+
 	const method = detectInstallMethod();
 	const command = getSelfUpdateCommandForMethod(method, packageName, updatePackageName, npmCommand);
 	if (!command || !isManagedByGlobalPackageManager(method, packageName, npmCommand) || !isSelfUpdatePathWritable()) {
 		return undefined;
 	}
 	return command;
+}
+
+function getGitHubUpdateCommand(packageName: string): SelfUpdateCommand | undefined {
+	const repoUrl = process.env.PI_UPDATE_URL!;
+	const match = repoUrl.match(/github\.com\/([^/]+\/[^/]+)/);
+	if (!match) return undefined;
+	const repo = match[1];
+
+	// Construct GitHub release tgz URL
+	// earendil-works-pi-coding-agent-0.77.0.tgz -> https://github.com/user/repo/releases/download/vX.Y.Z/name.tgz
+	const version = packageName.match(/(\d+\.\d+\.\d+)/)?.[1] || "latest";
+	const tgzName = `${packageName}.tgz`;
+	const downloadUrl = `https://github.com/${repo}/releases/download/v${version}/${tgzName}`;
+
+	const method = detectInstallMethod();
+	const [command = "npm", ...npmArgs] = [];
+
+	switch (method) {
+		case "npm": {
+			const inferred = getInferredNpmInstall();
+			const prefixArgs = [...npmArgs, ...(inferred ? ["--prefix", inferred.prefix] : [])];
+			return makeSelfUpdateCommand(
+				makeSelfUpdateCommandStep(command, [...prefixArgs, "install", "-g", "--ignore-scripts", downloadUrl]),
+			);
+		}
+		default:
+			return undefined;
+	}
 }
 
 export function getSelfUpdateUnavailableInstruction(
