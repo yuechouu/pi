@@ -1,0 +1,206 @@
+diff --git a/packages/coding-agent/src/core/tools/bash.ts b/packages/coding-agent/src/core/tools/bash.ts
+index efe3a5af0..ba31c1cb6 100644
+--- a/packages/coding-agent/src/core/tools/bash.ts
++++ b/packages/coding-agent/src/core/tools/bash.ts
+@@ -207,13 +207,14 @@ function rebuildBashResultRenderComponent(
+ 			output = output.slice(0, footerStart).trimEnd();
+ 		}
+ 	}
+ 
+ 	if (output) {
++		// Crush-style: prefix each line with │
+ 		const styledOutput = output
+ 			.split("\n")
+-			.map((line) => theme.fg("toolOutput", line))
++			.map((line) => theme.fg("muted", "│ ") + theme.fg("toolOutput", line))
+ 			.join("\n");
+ 
+ 		if (options.expanded) {
+ 			component.addChild(new Text(`\n${styledOutput}`, 0, 0));
+ 		} else {
+@@ -407,11 +408,16 @@ export function createBashToolDefinition(
+ 			if (context.executionStarted && state.startedAt === undefined) {
+ 				state.startedAt = Date.now();
+ 				state.endedAt = undefined;
+ 			}
+ 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
+-			text.setText(formatBashCall(args));
++			// Crush-style: ● Bash <command>
++			const command = str(args?.command) ?? "...";
++			const icon = context.isError ? theme.fg("error", "×") : theme.fg("dim", "●");
++			const label = theme.fg("toolTitle", theme.bold("Bash"));
++			const cmd = theme.fg("toolOutput", command);
++			text.setText(`${icon} ${label} ${cmd}`);
+ 			return text;
+ 		},
+ 		renderResult(result, options, _theme, context) {
+ 			const state = context.state;
+ 			if (state.startedAt !== undefined && options.isPartial && !state.interval) {
+@@ -422,10 +428,21 @@ export function createBashToolDefinition(
+ 				if (state.interval) {
+ 					clearInterval(state.interval);
+ 					state.interval = undefined;
+ 				}
+ 			}
++
++			// Update icon to success/error
++			const callText = (context.lastComponent as Text | undefined);
++			if (callText && !options.isPartial) {
++				const command = str((context as any).args?.command) ?? "...";
++				const icon = context.isError ? theme.fg("error", "×") : theme.fg("success", "✓");
++				const label = theme.fg("toolTitle", theme.bold("Bash"));
++				const cmd = theme.fg("toolOutput", command);
++				callText.setText(`${icon} ${label} ${cmd}`);
++			}
++
+ 			const component =
+ 				(context.lastComponent as BashResultRenderComponent | undefined) ?? new BashResultRenderComponent();
+ 			rebuildBashResultRenderComponent(
+ 				component,
+ 				result as any,
+diff --git a/packages/coding-agent/src/core/tools/edit.ts b/packages/coding-agent/src/core/tools/edit.ts
+index 25aa1e17b..8edc0a3e0 100644
+--- a/packages/coding-agent/src/core/tools/edit.ts
++++ b/packages/coding-agent/src/core/tools/edit.ts
+@@ -190,13 +190,19 @@ function getRenderablePreviewInput(args: RenderableEditArgs | undefined): { path
+ 	}
+ 
+ 	return null;
+ }
+ 
+-function formatEditCall(args: RenderableEditArgs | undefined, theme: Theme, cwd: string): string {
+-	const pathDisplay = renderToolPath(str(args?.file_path ?? args?.path), theme, cwd);
+-	return `${theme.fg("toolTitle", theme.bold("edit"))} ${pathDisplay}`;
++function formatEditCall(
++	args: RenderableEditArgs | undefined,
++	theme: typeof import("../../modes/interactive/theme/theme.ts").theme,
++	cwd: string,
++): string {
++	const rawPath = str(args?.file_path ?? args?.path);
++	const pathDisplay = renderToolPath(rawPath, theme, cwd);
++	// Crush-style: ● Edit <path>
++	return `${theme.fg("success", "●")} ${theme.fg("toolTitle", theme.bold("Edit"))} ${pathDisplay}`;
+ }
+ 
+ function formatEditResult(
+ 	args: RenderableEditArgs | undefined,
+ 	preview: EditPreview | undefined,
+@@ -229,40 +235,48 @@ function formatEditResult(
+ function getEditHeaderBg(
+ 	preview: EditPreview | undefined,
+ 	settledError: boolean | undefined,
+ 	theme: Theme,
+ ): (text: string) => string {
+-	if (preview) {
+-		if ("error" in preview) {
+-			return (text: string) => theme.bg("toolErrorBg", text);
+-		}
+-		return (text: string) => theme.bg("toolSuccessBg", text);
+-	}
+-	if (settledError) {
+-		return (text: string) => theme.bg("toolErrorBg", text);
+-	}
+-	return (text: string) => theme.bg("toolPendingBg", text);
++	// Crush-style: no colored background, use icons instead
++	return (text: string) => text;
+ }
+ 
+ function buildEditCallComponent(
+ 	component: EditCallRenderComponent,
+ 	args: RenderableEditArgs | undefined,
+ 	theme: Theme,
+ 	cwd: string,
+ ): EditCallRenderComponent {
+ 	component.setBgFn(getEditHeaderBg(component.preview, component.settledError, theme));
+ 	component.clear();
+-	component.addChild(new Text(formatEditCall(args, theme, cwd), 0, 0));
++
++	// Crush-style header with icon
++	const rawPath = str(args?.file_path ?? args?.path);
++	const pathDisplay = renderToolPath(rawPath, theme, cwd);
++
++	let icon: string;
++	if (component.settledError || (component.preview && "error" in component.preview)) {
++		icon = theme.fg("error", "×");
++	} else if (component.preview && !("error" in component.preview)) {
++		icon = theme.fg("success", "✓");
++	} else {
++		icon = theme.fg("success", "●");
++	}
++
++	component.addChild(new Text(`${icon} ${theme.fg("toolTitle", theme.bold("Edit"))} ${pathDisplay}`, 0, 0));
+ 
+ 	if (!component.preview) {
+ 		return component;
+ 	}
+ 
+-	const body =
+-		"error" in component.preview ? theme.fg("error", component.preview.error) : renderDiff(component.preview.diff);
+-	component.addChild(new Spacer(1));
+-	component.addChild(new Text(body, 0, 0));
++	if ("error" in component.preview) {
++		component.addChild(new Text(theme.fg("muted", "│ ") + theme.fg("error", component.preview.error), 0, 0));
++	} else {
++		component.addChild(new Spacer(1));
++		component.addChild(new Text(renderDiff(component.preview.diff), 0, 0));
++	}
+ 	return component;
+ }
+ 
+ function setEditPreview(
+ 	component: EditCallRenderComponent,
+diff --git a/packages/coding-agent/src/core/tools/read.ts b/packages/coding-agent/src/core/tools/read.ts
+index 2d0dd8381..1d8d2c5e5 100644
+--- a/packages/coding-agent/src/core/tools/read.ts
++++ b/packages/coding-agent/src/core/tools/read.ts
+@@ -70,12 +70,14 @@ function formatReadLineRange(args: ReadRenderArgs | undefined, theme: Theme): st
+ 	const endLine = args.limit !== undefined ? startLine + args.limit - 1 : "";
+ 	return theme.fg("warning", `:${startLine}${endLine ? `-${endLine}` : ""}`);
+ }
+ 
+ function formatReadCall(args: ReadRenderArgs | undefined, theme: Theme, cwd: string): string {
+-	const pathDisplay = renderToolPath(str(args?.file_path ?? args?.path), theme, cwd);
+-	return `${theme.fg("toolTitle", theme.bold("read"))} ${pathDisplay}${formatReadLineRange(args, theme)}`;
++	const rawPath = str(args?.file_path ?? args?.path);
++	const pathDisplay = renderToolPath(rawPath, theme, cwd);
++	// Crush-style: ● Read <path>
++	return `${theme.fg("success", "●")} ${theme.fg("toolTitle", theme.bold("Read"))} ${pathDisplay}${formatReadLineRange(args, theme)}`;
+ }
+ 
+ function trimTrailingEmptyLines(lines: string[]): string[] {
+ 	let end = lines.length;
+ 	while (end > 0 && lines[end - 1] === "") {
+@@ -150,12 +152,14 @@ function formatCompactReadCall(
+ 			formatReadLineRange(args, theme) +
+ 			expandHint
+ 		);
+ 	}
+ 
++	// Crush-style: ● Read <kind> <label>
+ 	return (
+-		theme.fg("toolTitle", theme.bold(`read ${classification.kind}`)) +
++		theme.fg("success", "●") + " " +
++		theme.fg("toolTitle", theme.bold(`Read ${classification.kind}`)) +
+ 		" " +
+ 		theme.fg("accent", classification.label) +
+ 		formatReadLineRange(args, theme) +
+ 		expandHint
+ 	);
+diff --git a/packages/coding-agent/src/core/tools/write.ts b/packages/coding-agent/src/core/tools/write.ts
+index a1b755ad7..d3ec2b379 100644
+--- a/packages/coding-agent/src/core/tools/write.ts
++++ b/packages/coding-agent/src/core/tools/write.ts
+@@ -136,11 +136,12 @@ function formatWriteCall(
+ 	cwd: string,
+ ): string {
+ 	const rawPath = str(args?.file_path ?? args?.path);
+ 	const fileContent = str(args?.content);
+ 	const pathDisplay = renderToolPath(rawPath, theme, cwd);
+-	let text = `${theme.fg("toolTitle", theme.bold("write"))} ${pathDisplay}`;
++	// Crush-style: ● Write <path>
++	let text = `${theme.fg("success", "●")} ${theme.fg("toolTitle", theme.bold("Write"))} ${pathDisplay}`;
+ 
+ 	if (fileContent === null) {
+ 		text += `\n\n${theme.fg("error", "[invalid content arg - expected string]")}`;
+ 	} else if (fileContent) {
+ 		const lang = rawPath ? getLanguageFromPath(rawPath) : undefined;
