@@ -11,7 +11,7 @@ index 751e28a40..8c58148a7 100644
  	custom: async () => undefined as never,
  	pasteToEditor: () => {},
 diff --git a/packages/coding-agent/src/core/extensions/types.ts b/packages/coding-agent/src/core/extensions/types.ts
-index 7696c62e6..adcec94cb 100644
+index 7696c62e6..83d16e889 100644
 --- a/packages/coding-agent/src/core/extensions/types.ts
 +++ b/packages/coding-agent/src/core/extensions/types.ts
 @@ -167,6 +167,12 @@ export interface ExtensionUIContext {
@@ -27,10 +27,28 @@ index 7696c62e6..adcec94cb 100644
  	/** Set a custom footer component, or undefined to restore the built-in footer.
  	 *
  	 * The factory receives a FooterDataProvider for data not otherwise accessible:
+@@ -745,7 +751,7 @@ export interface UserBashEvent {
+ // ============================================================================
+ 
+ /** Source of user input */
+-export type InputSource = "interactive" | "rpc" | "extension";
++export type InputSource = "interactive" | "rpc" | "extension" | "web";
+ 
+ /** Fired when user input is received, before agent processing */
+ export interface InputEvent {
 diff --git a/packages/coding-agent/src/core/tools/bash.ts b/packages/coding-agent/src/core/tools/bash.ts
-index efe3a5af0..ba31c1cb6 100644
+index efe3a5af0..94ff8be15 100644
 --- a/packages/coding-agent/src/core/tools/bash.ts
 +++ b/packages/coding-agent/src/core/tools/bash.ts
+@@ -176,7 +176,7 @@ function formatDuration(ms: number): string {
+ 	return `${(ms / 1000).toFixed(1)}s`;
+ }
+ 
+-function formatBashCall(args: { command?: string; timeout?: number } | undefined): string {
++function _formatBashCall(args: { command?: string; timeout?: number } | undefined): string {
+ 	const command = str(args?.command);
+ 	const timeout = args?.timeout as number | undefined;
+ 	const timeoutSuffix = timeout ? theme.fg("muted", ` (timeout ${timeout}s)`) : "";
 @@ -209,9 +209,10 @@ function rebuildBashResultRenderComponent(
  	}
  
@@ -63,7 +81,7 @@ index efe3a5af0..ba31c1cb6 100644
  			}
 +
 +			// Update icon to success/error
-+			const callText = (context.lastComponent as Text | undefined);
++			const callText = context.lastComponent as Text | undefined;
 +			if (callText && !options.isPartial) {
 +				const command = str((context as any).args?.command) ?? "...";
 +				const icon = context.isError ? theme.fg("error", "×") : theme.fg("success", "✓");
@@ -76,7 +94,7 @@ index efe3a5af0..ba31c1cb6 100644
  				(context.lastComponent as BashResultRenderComponent | undefined) ?? new BashResultRenderComponent();
  			rebuildBashResultRenderComponent(
 diff --git a/packages/coding-agent/src/core/tools/edit.ts b/packages/coding-agent/src/core/tools/edit.ts
-index 25aa1e17b..8edc0a3e0 100644
+index 25aa1e17b..cf9c74ce4 100644
 --- a/packages/coding-agent/src/core/tools/edit.ts
 +++ b/packages/coding-agent/src/core/tools/edit.ts
 @@ -192,9 +192,15 @@ function getRenderablePreviewInput(args: RenderableEditArgs | undefined): { path
@@ -86,7 +104,7 @@ index 25aa1e17b..8edc0a3e0 100644
 -function formatEditCall(args: RenderableEditArgs | undefined, theme: Theme, cwd: string): string {
 -	const pathDisplay = renderToolPath(str(args?.file_path ?? args?.path), theme, cwd);
 -	return `${theme.fg("toolTitle", theme.bold("edit"))} ${pathDisplay}`;
-+function formatEditCall(
++function _formatEditCall(
 +	args: RenderableEditArgs | undefined,
 +	theme: typeof import("../../modes/interactive/theme/theme.ts").theme,
 +	cwd: string,
@@ -98,9 +116,16 @@ index 25aa1e17b..8edc0a3e0 100644
  }
  
  function formatEditResult(
-@@ -231,16 +237,8 @@ function getEditHeaderBg(
- 	settledError: boolean | undefined,
- 	theme: Theme,
+@@ -227,20 +233,12 @@ function formatEditResult(
+ }
+ 
+ function getEditHeaderBg(
+-	preview: EditPreview | undefined,
+-	settledError: boolean | undefined,
+-	theme: Theme,
++	_preview: EditPreview | undefined,
++	_settledError: boolean | undefined,
++	_theme: Theme,
  ): (text: string) => string {
 -	if (preview) {
 -		if ("error" in preview) {
@@ -156,7 +181,7 @@ index 25aa1e17b..8edc0a3e0 100644
  }
  
 diff --git a/packages/coding-agent/src/core/tools/read.ts b/packages/coding-agent/src/core/tools/read.ts
-index 2d0dd8381..1d8d2c5e5 100644
+index 2d0dd8381..286961622 100644
 --- a/packages/coding-agent/src/core/tools/read.ts
 +++ b/packages/coding-agent/src/core/tools/read.ts
 @@ -72,8 +72,10 @@ function formatReadLineRange(args: ReadRenderArgs | undefined, theme: Theme): st
@@ -172,14 +197,15 @@ index 2d0dd8381..1d8d2c5e5 100644
  }
  
  function trimTrailingEmptyLines(lines: string[]): string[] {
-@@ -152,8 +154,10 @@ function formatCompactReadCall(
+@@ -152,8 +154,11 @@ function formatCompactReadCall(
  		);
  	}
  
 +	// Crush-style: ● Read <kind> <label>
  	return (
 -		theme.fg("toolTitle", theme.bold(`read ${classification.kind}`)) +
-+		theme.fg("success", "●") + " " +
++		theme.fg("success", "●") +
++		" " +
 +		theme.fg("toolTitle", theme.bold(`Read ${classification.kind}`)) +
  		" " +
  		theme.fg("accent", classification.label) +
@@ -285,7 +311,7 @@ index aa09cbb31..3ebd96e59 100644
  			// Fire and forget - host can implement terminal title control
  			output({
 diff --git a/packages/tui/src/tui.ts b/packages/tui/src/tui.ts
-index 2874ef02a..b367212fe 100644
+index 2874ef02a..30ff58460 100644
 --- a/packages/tui/src/tui.ts
 +++ b/packages/tui/src/tui.ts
 @@ -270,6 +270,11 @@ export class TUI extends Container {
@@ -307,7 +333,7 @@ index 2874ef02a..b367212fe 100644
 +		// Truncate main content to leave space for sidebar overlay
 +		if (this.sidebarWidth > 0) {
 +			const mainWidth = width - this.sidebarWidth;
-+			newLines = newLines.map(line => {
++			newLines = newLines.map((line) => {
 +				const vw = visibleWidth(line);
 +				if (vw > mainWidth) {
 +					return sliceByColumn(line, 0, mainWidth, true);

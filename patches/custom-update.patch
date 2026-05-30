@@ -1,9 +1,13 @@
 diff --git a/packages/coding-agent/src/config.ts b/packages/coding-agent/src/config.ts
-index 01ec8f8e3..842a24986 100644
+index 01ec8f8e3..e1f9a927a 100644
 --- a/packages/coding-agent/src/config.ts
 +++ b/packages/coding-agent/src/config.ts
-@@ -294,12 +294,51 @@ export function getSelfUpdateCommand(
- 	npmCommand?: string[],
+@@ -291,15 +291,54 @@ function isManagedByGlobalPackageManager(method: InstallMethod, packageName: str
+ 
+ export function getSelfUpdateCommand(
+ 	packageName: string,
+-	npmCommand?: string[],
++	_npmCommand?: string[],
  	updatePackageName = packageName,
  ): SelfUpdateCommand | undefined {
 -	const method = detectInstallMethod();
@@ -36,7 +40,7 @@ index 01ec8f8e3..842a24986 100644
 +	latestReleaseVersion = version;
 +}
 +
-+function getGitHubUpdateCommand(packageName: string, updatePackageName: string): SelfUpdateCommand | undefined {
++function getGitHubUpdateCommand(_packageName: string, updatePackageName: string): SelfUpdateCommand | undefined {
 +	const repoUrl = process.env.PI_UPDATE_URL!;
 +	const match = repoUrl.match(/github\.com\/([^/]+\/[^/]+)/);
 +	if (!match) return undefined;
@@ -60,7 +64,7 @@ index 01ec8f8e3..842a24986 100644
  
  export function getSelfUpdateUnavailableInstruction(
 diff --git a/packages/coding-agent/src/package-manager-cli.ts b/packages/coding-agent/src/package-manager-cli.ts
-index f61d4ff2a..60eab0d05 100644
+index f61d4ff2a..7e93ec77a 100644
 --- a/packages/coding-agent/src/package-manager-cli.ts
 +++ b/packages/coding-agent/src/package-manager-cli.ts
 @@ -10,6 +10,7 @@ import {
@@ -82,19 +86,24 @@ index f61d4ff2a..60eab0d05 100644
  			return { packageName, shouldRun: true, ...(latestRelease?.note ? { note: latestRelease.note } : {}) };
  		}
  	} catch {
-@@ -543,7 +545,9 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
+@@ -543,7 +545,14 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
  						return true;
  					}
  					const installMethod = detectInstallMethod();
 -					if (process.platform === "win32" && installMethod !== "npm" && installMethod !== "pnpm") {
 +					const useGitHubUpdate = process.env.PI_UPDATE_URL?.startsWith("https://github.com/");
-+						const useNpmUpdate = process.env.PI_NPM_PACKAGE || process.env.PI_UPDATE_URL === "npm";
-+						if (process.platform === "win32" && installMethod !== "npm" && installMethod !== "pnpm" && !useGitHubUpdate) {
++					const _useNpmUpdate = process.env.PI_NPM_PACKAGE || process.env.PI_UPDATE_URL === "npm";
++					if (
++						process.platform === "win32" &&
++						installMethod !== "npm" &&
++						installMethod !== "pnpm" &&
++						!useGitHubUpdate
++					) {
  						console.error(
  							chalk.red(`${APP_NAME} self-update on Windows is only supported for npm and pnpm installs.`),
  						);
 diff --git a/packages/coding-agent/src/utils/version-check.ts b/packages/coding-agent/src/utils/version-check.ts
-index aec25bdb5..023b37219 100644
+index aec25bdb5..8692e9f3c 100644
 --- a/packages/coding-agent/src/utils/version-check.ts
 +++ b/packages/coding-agent/src/utils/version-check.ts
 @@ -1,6 +1,8 @@
@@ -107,7 +116,13 @@ index aec25bdb5..023b37219 100644
  const DEFAULT_VERSION_CHECK_TIMEOUT_MS = 10000;
  
  export interface LatestPiRelease {
-@@ -59,9 +61,24 @@ export async function getLatestPiRelease(
+@@ -54,14 +56,29 @@ export function isNewerPackageVersion(candidateVersion: string, currentVersion:
+ }
+ 
+ export async function getLatestPiRelease(
+-	currentVersion: string,
++	_currentVersion: string,
+ 	options: { timeoutMs?: number } = {},
  ): Promise<LatestPiRelease | undefined> {
  	if (process.env.PI_SKIP_VERSION_CHECK || process.env.PI_OFFLINE) return undefined;
  
