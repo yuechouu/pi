@@ -345,7 +345,7 @@ async function getSelfUpdatePlan(force: boolean): Promise<SelfUpdatePlan> {
 	try {
 		const latestRelease = await getLatestPiRelease(VERSION);
 		const packageName = latestRelease?.packageName ?? PACKAGE_NAME;
-		if (!latestRelease || packageName !== PACKAGE_NAME || isNewerPackageVersion(latestRelease.version, VERSION)) {
+		if (!latestRelease || isNewerPackageVersion(latestRelease.version, VERSION)) {
 			return { packageName, shouldRun: true, ...(latestRelease?.note ? { note: latestRelease.note } : {}) };
 		}
 	} catch {

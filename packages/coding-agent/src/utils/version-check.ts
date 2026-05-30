@@ -127,9 +127,9 @@ async function getLatestReleaseFromGithub(
 
 	// Find the tgz asset
 	const tgzAsset = data.assets?.find((a) => a.name.endsWith(".tgz"));
-	const packageName = tgzAsset?.name
-		.replace(/-\d+\.\d+\.\d+\.tgz$/, "")
-		.replace(/\./g, "-");
+	// Keep the full name with version for correct download URL construction
+	// e.g., "earendil-works-pi-coding-agent-0.77.0" from "earendil-works-pi-coding-agent-0.77.0.tgz"
+	const packageName = tgzAsset?.name.replace(/\.tgz$/, "");
 
 	const note = typeof data.body === "string" ? data.body.slice(0, 500) : undefined;
 
