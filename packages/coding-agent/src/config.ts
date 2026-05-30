@@ -307,29 +307,26 @@ export function getSelfUpdateCommand(
 	return command;
 }
 
+// Store the latest release version for URL construction
+let latestReleaseVersion: string | undefined;
+
+export function setLatestReleaseVersion(version: string): void {
+	latestReleaseVersion = version;
+}
+
 function getGitHubUpdateCommand(packageName: string, updatePackageName: string): SelfUpdateCommand | undefined {
 	const repoUrl = process.env.PI_UPDATE_URL!;
 	const match = repoUrl.match(/github\.com\/([^/]+\/[^/]+)/);
 	if (!match) return undefined;
 	const repo = match[1];
 
-	// Use the tgz asset name from release (updatePackageName) which contains the version
-	// e.g., "earendil-works-pi-coding-agent-0.77.0" -> download from release
-	let tgzName: string;
-	let version: string;
+	// Use the actual tgz asset name from release
+	// e.g., "earendil-works-pi-coding-agent-0.77.0.tgz"
+	const tgzName = `${updatePackageName}.tgz`;
 
-	if (updatePackageName.includes("-")) {
-		// updatePackageName is like "earendil-works-pi-coding-agent-0.77.0"
-		const versionMatch = updatePackageName.match(/(\d+\.\d+\.\d+)$/);
-		version = versionMatch?.[1] || "latest";
-		tgzName = `${updatePackageName}.tgz`;
-	} else {
-		// Fallback: use PACKAGE_NAME and current version
-		version = VERSION;
-		tgzName = `${packageName.replace(/\//g, "-").replace(/^@/, "")}-${version}.tgz`;
-	}
-
-	const downloadUrl = `https://github.com/${repo}/releases/download/v${version}/${tgzName}`;
+	// Use the release tag version (v1.0.0) for the URL path, not the package version
+	const releaseVersion = latestReleaseVersion || VERSION;
+	const downloadUrl = `https://github.com/${repo}/releases/download/v${releaseVersion}/${tgzName}`;
 
 	// Use npm install -g regardless of detected install method
 	const inferred = getInferredNpmInstall();
