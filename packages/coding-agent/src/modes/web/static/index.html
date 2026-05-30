@@ -1,0 +1,1790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pi Agent</title>
+<style>
+/* ========================================================================
+   Hermes Teal Theme — CSS Variables
+   ======================================================================== */
+:root {
+  --bg-primary: #041c1c;
+  --bg-secondary: #0d2626;
+  --bg-tertiary: #143333;
+  --bg-hover: #1a3f3f;
+  --fg-primary: #ffe6cb;
+  --fg-secondary: #a8c4b8;
+  --fg-muted: #6b8f82;
+  --accent: #4ecdc4;
+  --accent-warm: #ffbd38;
+  --accent-red: #ff6b6b;
+  --accent-green: #51cf66;
+  --border: #1e3a3a;
+  --border-light: #2a4f4f;
+  --glow: rgba(255, 189, 56, 0.12);
+  --radius: 0.5rem;
+  --sidebar-width: 220px;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+}
+
+/* ========================================================================
+   Reset & Base
+   ======================================================================== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--fg-primary);
+  background: var(--bg-primary);
+}
+
+/* Warm glow backdrop */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at 0% 0%, transparent 55%, var(--glow) 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ========================================================================
+   Layout
+   ======================================================================== */
+#app {
+  display: flex;
+  height: 100vh;
+  position: relative;
+  z-index: 1;
+}
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 12px 0;
+}
+
+.sidebar-logo {
+  padding: 8px 16px 16px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-logo svg { flex-shrink: 0; }
+
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  color: var(--fg-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 13px;
+  user-select: none;
+}
+
+.nav-item:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
+.nav-item.active { background: var(--bg-tertiary); color: var(--accent); }
+
+.nav-item svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.nav-item.active svg { opacity: 1; }
+
+.sidebar-status {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background: var(--accent-green);
+}
+
+.status-dot.disconnected { background: var(--accent-red); }
+.status-dot.connecting { background: var(--accent-warm); animation: pulse 1s infinite; }
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* Main Content */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* Page Header */
+.page-header {
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+}
+
+.page-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-primary);
+}
+
+.page-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Page Content */
+.page-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+/* ========================================================================
+   Buttons
+   ======================================================================== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-light);
+  background: var(--bg-tertiary);
+  color: var(--fg-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.btn:hover { background: var(--bg-hover); border-color: var(--accent); }
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--bg-primary);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.btn-primary:hover { background: #3dbdb5; }
+
+.btn-danger {
+  background: transparent;
+  color: var(--accent-red);
+  border-color: var(--accent-red);
+}
+
+.btn-danger:hover { background: rgba(255, 107, 107, 0.1); }
+
+.btn-icon {
+  padding: 6px;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
+
+/* ========================================================================
+   Chat Page
+   ======================================================================== */
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chat-messages::-webkit-scrollbar { width: 6px; }
+.chat-messages::-webkit-scrollbar-track { background: transparent; }
+.chat-messages::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+
+.message {
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-word;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+.message-user {
+  align-self: flex-end;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  color: var(--fg-primary);
+}
+
+.message-assistant {
+  align-self: flex-start;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--fg-primary);
+  max-width: 90%;
+}
+
+.message-system {
+  align-self: center;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+/* Tool execution */
+.tool-execution {
+  margin: 8px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.tool-header:hover { background: var(--bg-hover); }
+
+.tool-icon {
+  font-size: 11px;
+  width: 18px;
+  text-align: center;
+}
+
+.tool-name { color: var(--accent); font-weight: 500; }
+.tool-label { color: var(--fg-secondary); flex: 1; }
+
+.tool-status {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.tool-status.running { color: var(--accent-warm); }
+.tool-status.success { color: var(--accent-green); }
+.tool-status.error { color: var(--accent-red); }
+
+.tool-body {
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-secondary);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
+  display: none;
+}
+
+.tool-body.expanded { display: block; }
+
+.tool-body::-webkit-scrollbar { width: 4px; height: 4px; }
+.tool-body::-webkit-scrollbar-track { background: transparent; }
+.tool-body::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 2px; }
+
+/* Markdown styling inside messages */
+.message-assistant p { margin: 0 0 8px; }
+.message-assistant p:last-child { margin-bottom: 0; }
+.message-assistant code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg-tertiary);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--accent);
+}
+
+.message-assistant pre {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  border: 1px solid var(--border);
+}
+
+.message-assistant pre code {
+  background: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--fg-secondary);
+}
+
+.message-assistant ul, .message-assistant ol {
+  margin: 4px 0 8px;
+  padding-left: 20px;
+}
+
+.message-assistant li { margin: 2px 0; }
+.message-assistant strong { color: var(--fg-primary); font-weight: 600; }
+.message-assistant em { color: var(--fg-secondary); }
+.message-assistant a { color: var(--accent); text-decoration: none; }
+.message-assistant a:hover { text-decoration: underline; }
+.message-assistant blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+  margin: 8px 0;
+  color: var(--fg-secondary);
+}
+.message-assistant h1, .message-assistant h2, .message-assistant h3 {
+  margin: 12px 0 6px;
+  color: var(--fg-primary);
+}
+.message-assistant h1 { font-size: 18px; }
+.message-assistant h2 { font-size: 16px; }
+.message-assistant h3 { font-size: 14px; }
+
+/* Streaming cursor */
+.streaming-cursor::after {
+  content: '▊';
+  animation: blink 0.8s infinite;
+  color: var(--accent);
+}
+
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+/* Chat Input */
+.chat-input-area {
+  padding: 12px 24px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.chat-input-wrapper {
+  flex: 1;
+  position: relative;
+}
+
+.chat-input {
+  width: 100%;
+  min-height: 40px;
+  max-height: 200px;
+  padding: 9px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  color: var(--fg-primary);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.chat-input:focus { border-color: var(--accent); }
+.chat-input::placeholder { color: var(--fg-muted); }
+
+.chat-send-btn {
+  height: 40px;
+  padding: 0 16px;
+}
+
+/* ========================================================================
+   Sessions Page
+   ======================================================================== */
+.sessions-list {
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.session-item:hover { border-color: var(--accent); background: var(--bg-tertiary); }
+.session-item.active { border-color: var(--accent); }
+
+.session-icon { color: var(--accent); flex-shrink: 0; }
+.session-info { flex: 1; min-width: 0; }
+.session-name { font-weight: 500; color: var(--fg-primary); }
+.session-meta { font-size: 12px; color: var(--fg-muted); margin-top: 2px; }
+
+/* ========================================================================
+   Models Page
+   ======================================================================== */
+.models-container {
+  padding: 24px;
+}
+
+.model-current {
+  padding: 16px 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  margin-bottom: 24px;
+}
+
+.model-current-label {
+  font-size: 12px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.model-current-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.model-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 16px 0 8px;
+}
+
+.model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.model-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+
+.model-item:hover { background: var(--bg-tertiary); border-color: var(--border); }
+.model-item.active { background: var(--bg-tertiary); border-color: var(--accent); }
+
+.model-provider {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  color: var(--fg-muted);
+}
+
+.model-id { flex: 1; color: var(--fg-primary); font-size: 13px; }
+
+/* Thinking level selector */
+.thinking-selector {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.thinking-btn {
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--fg-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.thinking-btn:hover { border-color: var(--accent); color: var(--fg-primary); }
+.thinking-btn.active { background: var(--accent); color: var(--bg-primary); border-color: var(--accent); }
+
+/* ========================================================================
+   Files Page
+   ======================================================================== */
+.files-container {
+  display: flex;
+  height: 100%;
+}
+
+.file-tree {
+  width: 260px;
+  min-width: 260px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.file-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--fg-secondary);
+  transition: all 0.1s;
+}
+
+.file-tree-item:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
+.file-tree-item.active { background: var(--bg-tertiary); color: var(--accent); }
+.file-tree-item.directory { color: var(--accent-warm); }
+
+.file-tree-indent { padding-left: 16px; }
+.file-tree-indent-2 { padding-left: 32px; }
+
+.file-preview {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+
+.file-preview-content {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--fg-secondary);
+  white-space: pre-wrap;
+  tab-size: 2;
+}
+
+/* ========================================================================
+   Config Page
+   ======================================================================== */
+.config-container {
+  padding: 24px;
+}
+
+.config-section {
+  margin-bottom: 24px;
+}
+
+.config-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-primary);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.config-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.config-key {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.config-value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--fg-secondary);
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ========================================================================
+   Logs Page
+   ======================================================================== */
+.logs-container {
+  padding: 16px 24px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.log-entry {
+  padding: 2px 0;
+  color: var(--fg-secondary);
+}
+
+.log-entry.error { color: var(--accent-red); }
+.log-entry.warn { color: var(--accent-warm); }
+.log-entry.info { color: var(--accent); }
+
+.log-timestamp { color: var(--fg-muted); margin-right: 8px; }
+
+/* ========================================================================
+   Dashboard Page
+   ======================================================================== */
+.dashboard-container {
+  padding: 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.stat-card {
+  padding: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--fg-primary);
+}
+
+.stat-sub {
+  font-size: 12px;
+  color: var(--fg-muted);
+  margin-top: 4px;
+}
+
+/* ========================================================================
+   Responsive
+   ======================================================================== */
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .message { max-width: 95%; }
+  .files-container { flex-direction: column; }
+  .file-tree { width: 100%; min-width: 0; max-height: 200px; border-right: none; border-bottom: 1px solid var(--border); }
+}
+
+/* ========================================================================
+   Scrollbar (global)
+   ======================================================================== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/></svg>
+      Pi Agent
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-item active" data-page="chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Chat
+      </div>
+      <div class="nav-item" data-page="sessions">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Sessions
+      </div>
+      <div class="nav-item" data-page="models">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+        Models
+      </div>
+      <div class="nav-item" data-page="files">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        Files
+      </div>
+      <div class="nav-item" data-page="config">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Config
+      </div>
+      <div class="nav-item" data-page="logs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Logs
+      </div>
+      <div class="nav-item" data-page="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Dashboard
+      </div>
+    </nav>
+    <div class="sidebar-status">
+      <div style="margin-bottom: 6px;">
+        <span class="status-dot connecting" id="statusDot"></span>
+        <span id="statusText">Connecting...</span>
+      </div>
+      <div id="cwdDisplay" style="font-size: 11px; color: var(--fg-muted); word-break: break-all; display: flex; align-items: center; gap: 4px;">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <span id="cwdPath">...</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <!-- Chat Page -->
+    <div class="page active" data-page="chat" style="display:flex; flex-direction:column; height:100%;">
+      <div class="page-header">
+        <span class="page-title" id="chatTitle">Chat</span>
+        <div class="page-actions">
+          <button class="btn" id="newSessionBtn" title="New Session">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New
+          </button>
+          <button class="btn btn-danger" id="abortBtn" title="Abort" style="display:none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+            Abort
+          </button>
+        </div>
+      </div>
+      <div class="chat-container">
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input-area">
+          <div class="chat-input-wrapper">
+            <textarea class="chat-input" id="chatInput" placeholder="Type a message..." rows="1"></textarea>
+          </div>
+          <button class="btn btn-primary chat-send-btn" id="sendBtn">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sessions Page -->
+    <div class="page" data-page="sessions" style="display:none; height:100%;">
+      <div class="page-header">
+        <span class="page-title">Sessions</span>
+        <div class="page-actions">
+          <button class="btn" id="refreshSessionsBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+      <div class="page-content">
+        <div class="sessions-list" id="sessionsList">
+          <div style="color: var(--fg-muted); padding: 20px; text-align: center;">Loading sessions...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Models Page -->
+    <div class="page" data-page="models" style="display:none; height:100%;">
+      <div class="page-header">
+        <span class="page-title">Models</span>
+      </div>
+      <div class="page-content">
+        <div class="models-container" id="modelsContainer">
+          <div style="color: var(--fg-muted); padding: 20px; text-align: center;">Loading models...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Files Page -->
+    <div class="page" data-page="files" style="display:none; height:100%;">
+      <div class="page-header">
+        <span class="page-title">Files</span>
+      </div>
+      <div class="page-content">
+        <div class="files-container">
+          <div class="file-tree" id="fileTree">
+            <div style="color: var(--fg-muted); padding: 20px; text-align: center;">Loading files...</div>
+          </div>
+          <div class="file-preview" id="filePreview">
+            <div style="color: var(--fg-muted); padding: 20px; text-align: center;">Select a file to preview</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Config Page -->
+    <div class="page" data-page="config" style="display:none; height:100%;">
+      <div class="page-header">
+        <span class="page-title">Configuration</span>
+      </div>
+      <div class="page-content">
+        <div class="config-container" id="configContainer">
+          <div style="color: var(--fg-muted); padding: 20px; text-align: center;">Loading configuration...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Logs Page -->
+    <div class="page" data-page="logs" style="display:none; height:100%;">
+      <div class="page-header">
+        <span class="page-title">Logs</span>
+        <div class="page-actions">
+          <button class="btn" id="clearLogsBtn">Clear</button>
+        </div>
+      </div>
+      <div class="page-content">
+        <div class="logs-container" id="logsContainer"></div>
+      </div>
+    </div>
+
+    <!-- Dashboard Page -->
+    <div class="page" data-page="dashboard" style="display:none; height:100%;">
+      <div class="page-header">
+        <span class="page-title">Dashboard</span>
+      </div>
+      <div class="page-content">
+        <div class="dashboard-container" id="dashboardContainer"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ========================================================================
+// State
+// ========================================================================
+const state = {
+  ws: null,
+  connected: false,
+  currentPage: 'chat',
+  sessionState: null,
+  messages: [],
+  models: [],
+  logs: [],
+  logFilter: 'all',
+  toolExecutions: new Map(), // toolCallId -> { name, label, status, body }
+  streamingMessages: new Map(), // messageId -> { text, thinking }
+  currentStreamId: null,
+  msgCounter: 0,
+};
+
+// ========================================================================
+// WebSocket
+// ========================================================================
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = `${proto}//${location.host}/ws`;
+  console.log('[PiAgent] Connecting to', url);
+  const ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    state.connected = true;
+    state.ws = ws;
+    updateStatus(true);
+    log('info', 'Connected to server');
+    console.log('[PiAgent] WebSocket connected');
+  };
+
+  ws.onclose = (evt) => {
+    state.connected = false;
+    state.ws = null;
+    updateStatus(false);
+    log('warn', `Disconnected (code=${evt.code}). Reconnecting in 2s...`);
+    console.log('[PiAgent] WebSocket closed', evt.code, evt.reason);
+    setTimeout(connect, 2000);
+  };
+
+  ws.onerror = (evt) => {
+    log('error', 'WebSocket error');
+    console.error('[PiAgent] WebSocket error', evt);
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      console.log('[PiAgent] Received:', msg.type, msg);
+      handleMessage(msg);
+    } catch (e) {
+      log('error', `Failed to parse message: ${e.message}`);
+    }
+  };
+}
+
+function send(obj) {
+  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+    state.ws.send(JSON.stringify(obj));
+  }
+}
+
+// ========================================================================
+// Message Handler
+// ========================================================================
+function handleMessage(msg) {
+  // Connection confirmation
+  if (msg.type === 'connected') {
+    state.sessionState = msg.state;
+    loadMessages();
+    updateChatTitle();
+    if (msg.state.cwd) {
+      document.getElementById('cwdPath').textContent = msg.state.cwd;
+    }
+    return;
+  }
+
+  // RPC responses
+  if (msg.type === 'response') {
+    if (msg.command === 'get_messages' && msg.success) {
+      state.messages = msg.data.messages;
+      console.log('[PiAgent] Loaded', msg.data.messages.length, 'messages');
+      renderChatMessages();
+    }
+    if (msg.command === 'get_state' && msg.success) {
+      state.sessionState = msg.data;
+      updateChatTitle();
+    }
+    if (msg.command === 'get_available_models' && msg.success) {
+      state.models = msg.data.models;
+      renderModels();
+    }
+    if (msg.command === 'set_model' && msg.success) {
+      if (state.sessionState) state.sessionState.model = msg.data;
+      if (state.currentPage === 'models') renderModels();
+      updateChatTitle();
+    }
+    if (msg.command === 'switch_session') {
+      if (msg.success) {
+        // Clear current chat and switch to chat page
+        document.getElementById('chatMessages').innerHTML = '';
+        state.streamingMessages.clear();
+        state.toolExecutions.clear();
+        switchPage('chat');
+        // Reload state and messages from new session
+        send({ type: 'get_state' });
+        send({ type: 'get_messages' });
+        log('info', 'Session switched successfully');
+      } else {
+        log('error', `Session switch failed: ${msg.error}`);
+        alert('Session switch failed: ' + msg.error);
+      }
+    }
+    return;
+  }
+
+  // Agent events
+  switch (msg.type) {
+    case 'message_start':
+      handleMessageStart(msg);
+      if (msg.message?.role === 'assistant') log('info', 'Assistant response started');
+      break;
+    case 'message_update':
+      handleMessageUpdate(msg);
+      break;
+    case 'message_end':
+      handleMessageEnd(msg);
+      break;
+    case 'tool_execution_start':
+      handleToolStart(msg);
+      log('info', `Tool: ${msg.toolName} started`);
+      break;
+    case 'tool_execution_update':
+      handleToolUpdate(msg);
+      break;
+    case 'tool_execution_end':
+      handleToolEnd(msg);
+      log(msg.isError ? 'error' : 'info', `Tool: ${msg.toolName} ${msg.isError ? 'failed' : 'completed'}`);
+      break;
+    case 'agent_start':
+      showAbortButton(true);
+      log('info', 'Agent started');
+      break;
+    case 'agent_end':
+      showAbortButton(false);
+      log('info', 'Agent finished');
+      break;
+    case 'turn_start':
+    case 'turn_end':
+      break;
+  }
+}
+
+function handleMessageStart(msg) {
+  if (msg.message?.role !== 'assistant') return;
+  const id = 'msg-' + (++state.msgCounter);
+  state.streamingMessages.set(id, { text: '', thinking: '' });
+  state.currentStreamId = id;
+  const el = createStreamingMessage(id);
+  document.getElementById('chatMessages').appendChild(el);
+  scrollToBottom();
+}
+
+function handleMessageUpdate(msg) {
+  if (!state.currentStreamId) return;
+  const streaming = state.streamingMessages.get(state.currentStreamId);
+  if (!streaming) return;
+
+  const evt = msg.assistantMessageEvent;
+  if (!evt) return;
+
+  if (evt.type === 'text_delta' && evt.delta) {
+    streaming.text += evt.delta;
+  } else if (evt.type === 'thinking_delta' && evt.delta) {
+    streaming.thinking += evt.delta;
+  }
+
+  updateStreamingMessage(state.currentStreamId, streaming);
+}
+
+function handleMessageEnd(msg) {
+  if (!state.currentStreamId) return;
+  const streaming = state.streamingMessages.get(state.currentStreamId);
+  if (streaming) {
+    finalizeStreamingMessage(state.currentStreamId, streaming);
+    state.streamingMessages.delete(state.currentStreamId);
+  }
+  state.currentStreamId = null;
+}
+
+function handleToolStart(msg) {
+  state.toolExecutions.set(msg.toolCallId, {
+    name: msg.toolName,
+    label: msg.toolName,
+    status: 'running',
+    body: '',
+    args: msg.args,
+  });
+  renderToolInChat(msg.toolCallId);
+}
+
+function handleToolUpdate(msg) {
+  const tool = state.toolExecutions.get(msg.toolCallId);
+  if (!tool) return;
+  // partialResult may contain partial output
+  if (msg.partialResult) {
+    if (typeof msg.partialResult === 'string') tool.body += msg.partialResult;
+    else if (msg.partialResult.output) tool.body += msg.partialResult.output;
+    else if (msg.partialResult.text) tool.body += msg.partialResult.text;
+  }
+  updateToolInChat(msg.toolCallId);
+}
+
+function handleToolEnd(msg) {
+  const tool = state.toolExecutions.get(msg.toolCallId);
+  if (!tool) return;
+  tool.status = msg.isError ? 'error' : 'success';
+  // Extract result text from various possible structures
+  if (msg.result) {
+    if (typeof msg.result === 'string') tool.body = msg.result;
+    else if (msg.result.text) tool.body = msg.result.text;
+    else if (msg.result.output) tool.body = msg.result.output;
+  }
+  updateToolInChat(msg.toolCallId);
+}
+
+// ========================================================================
+// Chat Rendering
+// ========================================================================
+function renderChatMessages() {
+  const container = document.getElementById('chatMessages');
+  container.innerHTML = '';
+
+  for (const msg of state.messages) {
+    if (msg.role === 'user') {
+      container.appendChild(createUserMessage(extractText(msg)));
+    } else if (msg.role === 'assistant') {
+      const text = extractAssistantText(msg);
+      if (text) container.appendChild(createAssistantMessage(text));
+    } else if (msg.role === 'toolResult') {
+      // Tool results are shown via tool_execution events
+    }
+  }
+  scrollToBottom();
+}
+
+function extractText(msg) {
+  if (typeof msg.content === 'string') return msg.content;
+  if (Array.isArray(msg.content)) {
+    return msg.content.filter(b => b.type === 'text').map(b => b.text).join('');
+  }
+  return '';
+}
+
+function extractAssistantText(msg) {
+  if (typeof msg.content === 'string') return msg.content;
+  if (Array.isArray(msg.content)) {
+    return msg.content.filter(b => b.type === 'text').map(b => b.text).join('');
+  }
+  return '';
+}
+
+function createUserMessage(text) {
+  const div = document.createElement('div');
+  div.className = 'message message-user';
+  div.textContent = text;
+  return div;
+}
+
+function createAssistantMessage(text) {
+  const div = document.createElement('div');
+  div.className = 'message message-assistant';
+  div.innerHTML = renderMarkdown(text);
+  return div;
+}
+
+function createStreamingMessage(messageId) {
+  const div = document.createElement('div');
+  div.className = 'message message-assistant';
+  div.id = `msg-${messageId}`;
+  div.innerHTML = '<span class="streaming-cursor"></span>';
+  return div;
+}
+
+function updateStreamingMessage(messageId, streaming) {
+  const el = document.getElementById(`msg-${messageId}`);
+  if (!el) return;
+
+  let html = '';
+  if (streaming.thinking) {
+    html += `<div style="color: var(--fg-muted); font-size: 12px; font-style: italic; margin-bottom: 6px; padding: 6px 10px; background: var(--bg-primary); border-radius: 4px; border-left: 3px solid var(--border-light);">${escapeHtml(streaming.thinking)}</div>`;
+  }
+  if (streaming.text) {
+    html += renderMarkdown(streaming.text);
+  }
+  html += '<span class="streaming-cursor"></span>';
+  el.innerHTML = html;
+  scrollToBottom();
+}
+
+function finalizeStreamingMessage(messageId, streaming) {
+  const el = document.getElementById(`msg-${messageId}`);
+  if (!el) return;
+
+  let html = '';
+  if (streaming.thinking) {
+    html += `<div style="color: var(--fg-muted); font-size: 12px; font-style: italic; margin-bottom: 6px; padding: 6px 10px; background: var(--bg-primary); border-radius: 4px; border-left: 3px solid var(--border-light);">${escapeHtml(streaming.thinking)}</div>`;
+  }
+  if (streaming.text) {
+    html += renderMarkdown(streaming.text);
+  }
+  el.innerHTML = html;
+  scrollToBottom();
+}
+
+function renderToolInChat(toolCallId) {
+  const tool = state.toolExecutions.get(toolCallId);
+  if (!tool) return;
+
+  const container = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.id = `tool-${toolCallId}`;
+  div.className = 'tool-execution';
+  div.innerHTML = `
+    <div class="tool-header" onclick="toggleToolBody('${toolCallId}')">
+      <span class="tool-icon">●</span>
+      <span class="tool-name">${escapeHtml(tool.name)}</span>
+      <span class="tool-label">${escapeHtml(tool.label)}</span>
+      <span class="tool-status running">running</span>
+    </div>
+    <div class="tool-body" id="tool-body-${toolCallId}">${tool.body ? escapeHtml(tool.body) : ''}</div>
+  `;
+  container.appendChild(div);
+  scrollToBottom();
+}
+
+function updateToolInChat(toolCallId) {
+  const tool = state.toolExecutions.get(toolCallId);
+  if (!tool) return;
+
+  const el = document.getElementById(`tool-${toolCallId}`);
+  if (!el) return;
+
+  const statusEl = el.querySelector('.tool-status');
+  statusEl.className = `tool-status ${tool.status}`;
+  statusEl.textContent = tool.status;
+
+  const iconEl = el.querySelector('.tool-icon');
+  iconEl.textContent = tool.status === 'success' ? '✓' : tool.status === 'error' ? '×' : '●';
+  iconEl.style.color = tool.status === 'success' ? 'var(--accent-green)' : tool.status === 'error' ? 'var(--accent-red)' : 'var(--accent-warm)';
+
+  const bodyEl = document.getElementById(`tool-body-${toolCallId}`);
+  if (bodyEl && tool.body) {
+    bodyEl.textContent = tool.body;
+    if (tool.status !== 'running') bodyEl.classList.add('expanded');
+  }
+  scrollToBottom();
+}
+
+function toggleToolBody(toolCallId) {
+  const bodyEl = document.getElementById(`tool-body-${toolCallId}`);
+  if (bodyEl) bodyEl.classList.toggle('expanded');
+}
+
+// ========================================================================
+// Markdown Rendering (simple)
+// ========================================================================
+function renderMarkdown(text) {
+  let html = escapeHtml(text);
+
+  // Code blocks
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Bold
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+  // Italic
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  // Links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  // Headings
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+  // Blockquotes
+  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+
+  // Lists
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+
+  // Paragraphs
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+  html = '<p>' + html + '</p>';
+
+  // Clean up empty paragraphs
+  html = html.replace(/<p><\/p>/g, '');
+
+  return html;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ========================================================================
+// UI Helpers
+// ========================================================================
+function updateStatus(connected) {
+  const dot = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+  dot.className = connected ? 'status-dot' : 'status-dot disconnected';
+  text.textContent = connected ? 'Connected' : 'Disconnected';
+}
+
+function updateChatTitle() {
+  const el = document.getElementById('chatTitle');
+  if (state.sessionState?.sessionName) {
+    el.textContent = `Chat — ${state.sessionState.sessionName}`;
+  } else if (state.sessionState?.model) {
+    el.textContent = `Chat — ${state.sessionState.model.id}`;
+  }
+}
+
+function showAbortButton(show) {
+  document.getElementById('abortBtn').style.display = show ? 'flex' : 'none';
+}
+
+function scrollToBottom() {
+  const container = document.getElementById('chatMessages');
+  requestAnimationFrame(() => {
+    container.scrollTop = container.scrollHeight;
+  });
+}
+
+function log(level, message) {
+  state.logs.push({ level, message, time: new Date() });
+  if (state.currentPage === 'logs') renderLogs();
+}
+
+// ========================================================================
+// Page Navigation
+// ========================================================================
+function switchPage(page) {
+  state.currentPage = page;
+
+  // Update nav items
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === page);
+  });
+
+  // Show/hide pages
+  document.querySelectorAll('.page').forEach(el => {
+    el.style.display = el.dataset.page === page ? (page === 'chat' || page === 'files' ? 'flex' : 'block') : 'none';
+    if (page === 'chat' || page === 'files') el.style.flexDirection = 'column';
+  });
+
+  // Load page data
+  if (page === 'models' && state.models.length === 0) {
+    send({ type: 'get_available_models' });
+  }
+  if (page === 'logs') renderLogs();
+  if (page === 'dashboard') renderDashboard();
+  if (page === 'sessions') renderSessions();
+  if (page === 'config') renderConfig();
+  if (page === 'files' && !state.currentDir) loadFileTree();
+}
+
+// ========================================================================
+// Chat Actions
+// ========================================================================
+function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+
+  // Add user message to UI immediately
+  const container = document.getElementById('chatMessages');
+  container.appendChild(createUserMessage(text));
+  scrollToBottom();
+
+  // Send to server
+  send({ type: 'prompt', message: text });
+  input.value = '';
+  input.style.height = 'auto';
+}
+
+function abortAgent() {
+  send({ type: 'abort' });
+}
+
+function newSession() {
+  send({ type: 'new_session' });
+  document.getElementById('chatMessages').innerHTML = '';
+  state.messages = [];
+  state.streamingMessages.clear();
+  state.toolExecutions.clear();
+}
+
+function loadMessages() {
+  send({ type: 'get_messages' });
+}
+
+// ========================================================================
+// Models Page
+// ========================================================================
+function renderModels() {
+  const container = document.getElementById('modelsContainer');
+  if (!state.sessionState) return;
+
+  const currentModel = state.sessionState.model;
+  const currentThinking = state.sessionState.thinkingLevel;
+
+  // Group by provider
+  const grouped = {};
+  for (const m of state.models) {
+    if (!grouped[m.provider]) grouped[m.provider] = [];
+    grouped[m.provider].push(m);
+  }
+
+  let html = `
+    <div class="model-current">
+      <div class="model-current-label">Current Model</div>
+      <div class="model-current-name">${currentModel ? `${currentModel.provider}/${currentModel.id}` : 'None'}</div>
+    </div>
+    <div style="margin-bottom: 20px;">
+      <div class="model-current-label">Thinking Level</div>
+      <div class="thinking-selector">
+        ${['off', 'minimal', 'low', 'medium', 'high', 'xhigh'].map(level =>
+          `<button class="thinking-btn ${currentThinking === level ? 'active' : ''}" onclick="setThinkingLevel('${level}')">${level}</button>`
+        ).join('')}
+      </div>
+    </div>
+  `;
+
+  for (const [provider, models] of Object.entries(grouped)) {
+    html += `<div class="model-section-title">${escapeHtml(provider)}</div><div class="model-list">`;
+    for (const m of models) {
+      const isActive = currentModel && currentModel.provider === m.provider && currentModel.id === m.id;
+      html += `
+        <div class="model-item ${isActive ? 'active' : ''}" onclick="setModel('${m.provider}', '${m.id}')">
+          <span class="model-provider">${escapeHtml(m.provider)}</span>
+          <span class="model-id">${escapeHtml(m.id)}</span>
+        </div>
+      `;
+    }
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+function setModel(provider, modelId) {
+  send({ type: 'set_model', provider, modelId });
+}
+
+function setThinkingLevel(level) {
+  send({ type: 'set_thinking_level', level });
+  if (state.sessionState) state.sessionState.thinkingLevel = level;
+  renderModels();
+}
+
+// ========================================================================
+// Sessions Page
+// ========================================================================
+function renderSessions() {
+  const container = document.getElementById('sessionsList');
+  container.innerHTML = '<div style="color: var(--fg-muted); padding: 20px; text-align: center;">Loading sessions...</div>';
+
+  fetch('/api/sessions')
+    .then(r => r.json())
+    .then(data => {
+      if (!data.sessions || data.sessions.length === 0) {
+        container.innerHTML = '<div style="color: var(--fg-muted); padding: 20px; text-align: center;">No sessions found</div>';
+        return;
+      }
+
+      // Store sessions data for click handling
+      state.sessionsList = data.sessions;
+
+      container.innerHTML = data.sessions.map((s, idx) => {
+        const date = new Date(s.modified);
+        const timeAgo = formatTimeAgo(date);
+        const displayName = s.name || s.firstMessage?.slice(0, 60) || s.id?.slice(0, 8) || 'Untitled';
+        return `
+          <div class="session-item ${s.isCurrent ? 'active' : ''}" data-session-idx="${idx}" onclick="handleSessionClick(${idx})">
+            <svg class="session-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <div class="session-info">
+              <div class="session-name">${escapeHtml(displayName)}</div>
+              <div class="session-meta">${s.messageCount} msgs · ${timeAgo}${s.cwd ? ' · ' + escapeHtml(s.cwd.split(/[/\\]/).pop()) : ''}</div>
+            </div>
+            ${s.isCurrent ? '<span style="font-size:11px; color:var(--accent);">current</span>' : ''}
+          </div>
+        `;
+      }).join('');
+    })
+    .catch(err => {
+      container.innerHTML = `<div style="color: var(--accent-red); padding: 20px;">Error: ${escapeHtml(err.message)}</div>`;
+    });
+}
+
+function formatTimeAgo(date) {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+  if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+  return Math.floor(seconds / 86400) + 'd ago';
+}
+
+function handleSessionClick(idx) {
+  const s = state.sessionsList?.[idx];
+  if (!s || s.isCurrent) return;
+  switchSession(s.file);
+}
+
+function switchSession(sessionPath) {
+  log('info', `Switching to session: ${sessionPath.slice(-40)}...`);
+  send({ type: 'switch_session', sessionPath });
+}
+
+// ========================================================================
+// Files Page
+// ========================================================================
+let currentFilePath = null;
+
+function loadFileTree(dirPath) {
+  const tree = document.getElementById('fileTree');
+  tree.innerHTML = '<div style="color: var(--fg-muted); padding: 12px;">Loading...</div>';
+
+  fetch(`/api/files?path=${encodeURIComponent(dirPath || '')}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        tree.innerHTML = `<div style="color: var(--accent-red); padding: 12px;">${escapeHtml(data.error)}</div>`;
+        return;
+      }
+      state.currentDir = data.path;
+      renderFileTree(data.path, data.items);
+    })
+    .catch(err => {
+      tree.innerHTML = `<div style="color: var(--accent-red); padding: 12px;">${escapeHtml(err.message)}</div>`;
+    });
+}
+
+function renderFileTree(dirPath, items) {
+  const tree = document.getElementById('fileTree');
+  const parentDir = dirPath.replace(/[/\\][^/\\]+$/, '') || dirPath;
+
+  let html = `
+    <div class="file-tree-item" onclick="loadFileTree('${escapeHtml(parentDir.replace(/\\/g, '\\\\'))}')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      <span style="color: var(--fg-muted);">..</span>
+    </div>
+  `;
+
+  for (const item of items) {
+    const icon = item.isDirectory
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
+      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+
+    const escapedPath = item.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const onclick = item.isDirectory
+      ? `loadFileTree('${escapedPath}')`
+      : `loadFilePreview('${escapedPath}')`;
+
+    html += `
+      <div class="file-tree-item ${item.isDirectory ? 'directory' : ''}" onclick="${onclick}">
+        ${icon}
+        <span>${escapeHtml(item.name)}</span>
+      </div>
+    `;
+  }
+
+  tree.innerHTML = html;
+}
+
+function loadFilePreview(filePath) {
+  currentFilePath = filePath;
+  const preview = document.getElementById('filePreview');
+  preview.innerHTML = '<div style="color: var(--fg-muted); padding: 20px;">Loading...</div>';
+
+  fetch(`/api/file?path=${encodeURIComponent(filePath)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        preview.innerHTML = `<div style="color: var(--accent-red); padding: 20px;">${escapeHtml(data.error)}</div>`;
+        return;
+      }
+      preview.innerHTML = `
+        <div style="margin-bottom: 8px; font-size: 12px; color: var(--fg-muted); display: flex; justify-content: space-between;">
+          <span>${escapeHtml(data.path)}</span>
+          <span>${(data.size / 1024).toFixed(1)} KB</span>
+        </div>
+        <pre class="file-preview-content">${escapeHtml(data.content)}</pre>
+      `;
+    })
+    .catch(err => {
+      preview.innerHTML = `<div style="color: var(--accent-red); padding: 20px;">${escapeHtml(err.message)}</div>`;
+    });
+}
+
+// ========================================================================
+// Config Page
+// ========================================================================
+function renderConfig() {
+  const container = document.getElementById('configContainer');
+  const s = state.sessionState;
+  if (!s) return;
+
+  container.innerHTML = `
+    <div class="config-section">
+      <div class="config-section-title">Session</div>
+      <div class="config-item">
+        <span class="config-key">session.id</span>
+        <span class="config-value">${s.sessionId || 'N/A'}</span>
+      </div>
+      <div class="config-item">
+        <span class="config-key">session.name</span>
+        <span class="config-value">${s.sessionName || 'N/A'}</span>
+      </div>
+      <div class="config-item">
+        <span class="config-key">session.file</span>
+        <span class="config-value">${s.sessionFile || 'N/A'}</span>
+      </div>
+      <div class="config-item">
+        <span class="config-key">messages</span>
+        <span class="config-value">${s.messageCount}</span>
+      </div>
+    </div>
+    <div class="config-section">
+      <div class="config-section-title">Model</div>
+      <div class="config-item">
+        <span class="config-key">model</span>
+        <span class="config-value">${s.model ? `${s.model.provider}/${s.model.id}` : 'None'}</span>
+      </div>
+      <div class="config-item">
+        <span class="config-key">thinking</span>
+        <span class="config-value">${s.thinkingLevel}</span>
+      </div>
+    </div>
+    <div class="config-section">
+      <div class="config-section-title">Options</div>
+      <div class="config-item">
+        <span class="config-key">autoCompaction</span>
+        <span class="config-value">${s.autoCompactionEnabled}</span>
+      </div>
+      <div class="config-item">
+        <span class="config-key">steeringMode</span>
+        <span class="config-value">${s.steeringMode}</span>
+      </div>
+      <div class="config-item">
+        <span class="config-key">followUpMode</span>
+        <span class="config-value">${s.followUpMode}</span>
+      </div>
+    </div>
+  `;
+}
+
+// ========================================================================
+// Logs Page
+// ========================================================================
+function renderLogs() {
+  const container = document.getElementById('logsContainer');
+  const filter = state.logFilter || 'all';
+  const filtered = filter === 'all' ? state.logs : state.logs.filter(l => l.level === filter);
+
+  container.innerHTML = `
+    <div style="margin-bottom: 12px; display: flex; gap: 6px; flex-wrap: wrap;">
+      ${['all', 'info', 'warn', 'error'].map(f =>
+        `<button class="thinking-btn ${filter === f ? 'active' : ''}" onclick="setLogFilter('${f}')">${f}</button>`
+      ).join('')}
+    </div>
+    ${filtered.length === 0 ? '<div style="color: var(--fg-muted); padding: 20px; text-align: center;">No logs</div>' :
+      filtered.map(l => `
+        <div class="log-entry ${l.level}">
+          <span class="log-timestamp">${l.time.toLocaleTimeString()}</span>
+          ${escapeHtml(l.message)}
+        </div>
+      `).join('')}
+  `;
+  container.scrollTop = container.scrollHeight;
+}
+
+function setLogFilter(filter) {
+  state.logFilter = filter;
+  renderLogs();
+}
+
+// ========================================================================
+// Dashboard Page
+// ========================================================================
+function renderDashboard() {
+  const container = document.getElementById('dashboardContainer');
+  const s = state.sessionState;
+  if (!s) return;
+
+  const toolCount = state.toolExecutions.size;
+  const statusColor = s.isStreaming ? 'var(--accent-warm)' : 'var(--accent-green)';
+  const statusText = s.isStreaming ? 'Streaming' : s.isCompacting ? 'Compacting' : 'Idle';
+
+  container.innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Messages</div>
+      <div class="stat-value">${s.messageCount}</div>
+      <div class="stat-sub">${s.pendingMessageCount} pending in queue</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Model</div>
+      <div class="stat-value" style="font-size: 18px;">${s.model?.id || 'None'}</div>
+      <div class="stat-sub">${s.model?.provider || 'No provider'}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Thinking Level</div>
+      <div class="stat-value" style="font-size: 22px;">${s.thinkingLevel}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Status</div>
+      <div class="stat-value" style="font-size: 18px; color: ${statusColor};">${statusText}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Tool Calls</div>
+      <div class="stat-value">${toolCount}</div>
+      <div class="stat-sub">this session</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Session</div>
+      <div class="stat-value" style="font-size: 14px; word-break: break-all;">${s.sessionName || s.sessionId?.slice(0, 12) || 'N/A'}</div>
+      <div class="stat-sub">${s.autoCompactionEnabled ? 'Auto-compaction on' : 'Auto-compaction off'}</div>
+    </div>
+  `;
+}
+
+// ========================================================================
+// Event Listeners
+// ========================================================================
+document.addEventListener('DOMContentLoaded', () => {
+  // Navigation
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', () => switchPage(el.dataset.page));
+  });
+
+  // Chat input
+  const input = document.getElementById('chatInput');
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  // Auto-resize textarea
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 200) + 'px';
+  });
+
+  // Buttons
+  document.getElementById('sendBtn').addEventListener('click', sendMessage);
+  document.getElementById('abortBtn').addEventListener('click', abortAgent);
+  document.getElementById('newSessionBtn').addEventListener('click', newSession);
+  document.getElementById('refreshSessionsBtn').addEventListener('click', renderSessions);
+  document.getElementById('clearLogsBtn').addEventListener('click', () => {
+    state.logs = [];
+    renderLogs();
+  });
+
+  // Connect
+  connect();
+});
+</script>
+</body>
+</html>
