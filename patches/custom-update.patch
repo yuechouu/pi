@@ -1,0 +1,204 @@
+diff --git a/packages/coding-agent/src/config.ts b/packages/coding-agent/src/config.ts
+index 01ec8f8e3..842a24986 100644
+--- a/packages/coding-agent/src/config.ts
++++ b/packages/coding-agent/src/config.ts
+@@ -294,12 +294,51 @@ export function getSelfUpdateCommand(
+ 	npmCommand?: string[],
+ 	updatePackageName = packageName,
+ ): SelfUpdateCommand | undefined {
+-	const method = detectInstallMethod();
+-	const command = getSelfUpdateCommandForMethod(method, packageName, updatePackageName, npmCommand);
+-	if (!command || !isManagedByGlobalPackageManager(method, packageName, npmCommand) || !isSelfUpdatePathWritable()) {
+-		return undefined;
++	// Support GitHub releases: PI_UPDATE_URL=https://github.com/user/repo
++	if (process.env.PI_UPDATE_URL?.startsWith("https://github.com/")) {
++		return getGitHubUpdateCommand(packageName, updatePackageName);
+ 	}
+-	return command;
++
++	// Default: use npm package
++	const npmPackage = process.env.PI_NPM_PACKAGE || "pi-coding-agent-yuechouu";
++	return getNpmUpdateCommand(npmPackage);
++}
++
++function getNpmUpdateCommand(packageName: string): SelfUpdateCommand | undefined {
++	const inferred = getInferredNpmInstall();
++	const prefixArgs = inferred ? ["--prefix", inferred.prefix] : [];
++	return makeSelfUpdateCommand(
++		makeSelfUpdateCommandStep("npm", [...prefixArgs, "install", "-g", "--ignore-scripts", packageName]),
++	);
++}
++
++// Store the latest release version for URL construction
++let latestReleaseVersion: string | undefined;
++
++export function setLatestReleaseVersion(version: string): void {
++	latestReleaseVersion = version;
++}
++
++function getGitHubUpdateCommand(packageName: string, updatePackageName: string): SelfUpdateCommand | undefined {
++	const repoUrl = process.env.PI_UPDATE_URL!;
++	const match = repoUrl.match(/github\.com\/([^/]+\/[^/]+)/);
++	if (!match) return undefined;
++	const repo = match[1];
++
++	// Use the actual tgz asset name from release
++	// e.g., "earendil-works-pi-coding-agent-0.77.0.tgz"
++	const tgzName = `${updatePackageName}.tgz`;
++
++	// Use the release tag version (v1.0.0) for the URL path, not the package version
++	const releaseVersion = latestReleaseVersion || VERSION;
++	const downloadUrl = `https://github.com/${repo}/releases/download/v${releaseVersion}/${tgzName}`;
++
++	// Use npm install -g regardless of detected install method
++	const inferred = getInferredNpmInstall();
++	const prefixArgs = inferred ? ["--prefix", inferred.prefix] : [];
++	return makeSelfUpdateCommand(
++		makeSelfUpdateCommandStep("npm", [...prefixArgs, "install", "-g", "--ignore-scripts", downloadUrl]),
++	);
+ }
+ 
+ export function getSelfUpdateUnavailableInstruction(
+diff --git a/packages/coding-agent/src/package-manager-cli.ts b/packages/coding-agent/src/package-manager-cli.ts
+index f61d4ff2a..60eab0d05 100644
+--- a/packages/coding-agent/src/package-manager-cli.ts
++++ b/packages/coding-agent/src/package-manager-cli.ts
+@@ -10,6 +10,7 @@ import {
+ 	getSelfUpdateUnavailableInstruction,
+ 	PACKAGE_NAME,
+ 	type SelfUpdateCommand,
++	setLatestReleaseVersion,
+ 	VERSION,
+ } from "./config.ts";
+ import { DefaultPackageManager } from "./core/package-manager.ts";
+@@ -344,8 +345,9 @@ async function getSelfUpdatePlan(force: boolean): Promise<SelfUpdatePlan> {
+ 
+ 	try {
+ 		const latestRelease = await getLatestPiRelease(VERSION);
++		if (latestRelease?.version) setLatestReleaseVersion(latestRelease.version);
+ 		const packageName = latestRelease?.packageName ?? PACKAGE_NAME;
+-		if (!latestRelease || packageName !== PACKAGE_NAME || isNewerPackageVersion(latestRelease.version, VERSION)) {
++		if (!latestRelease || isNewerPackageVersion(latestRelease.version, VERSION)) {
+ 			return { packageName, shouldRun: true, ...(latestRelease?.note ? { note: latestRelease.note } : {}) };
+ 		}
+ 	} catch {
+@@ -543,7 +545,9 @@ export async function handlePackageCommand(args: string[]): Promise<boolean> {
+ 						return true;
+ 					}
+ 					const installMethod = detectInstallMethod();
+-					if (process.platform === "win32" && installMethod !== "npm" && installMethod !== "pnpm") {
++					const useGitHubUpdate = process.env.PI_UPDATE_URL?.startsWith("https://github.com/");
++						const useNpmUpdate = process.env.PI_NPM_PACKAGE || process.env.PI_UPDATE_URL === "npm";
++						if (process.platform === "win32" && installMethod !== "npm" && installMethod !== "pnpm" && !useGitHubUpdate) {
+ 						console.error(
+ 							chalk.red(`${APP_NAME} self-update on Windows is only supported for npm and pnpm installs.`),
+ 						);
+diff --git a/packages/coding-agent/src/utils/version-check.ts b/packages/coding-agent/src/utils/version-check.ts
+index aec25bdb5..023b37219 100644
+--- a/packages/coding-agent/src/utils/version-check.ts
++++ b/packages/coding-agent/src/utils/version-check.ts
+@@ -1,6 +1,8 @@
+ import { getPiUserAgent } from "./pi-user-agent.ts";
+ 
+-const LATEST_VERSION_URL = "https://pi.dev/api/latest-version";
++const DEFAULT_LATEST_VERSION_URL = "https://pi.dev/api/latest-version";
++const LATEST_VERSION_URL = process.env.PI_UPDATE_URL || DEFAULT_LATEST_VERSION_URL;
++const NPM_PACKAGE_NAME = process.env.PI_NPM_PACKAGE || "pi-coding-agent-yuechouu";
+ const DEFAULT_VERSION_CHECK_TIMEOUT_MS = 10000;
+ 
+ export interface LatestPiRelease {
+@@ -59,9 +61,24 @@ export async function getLatestPiRelease(
+ ): Promise<LatestPiRelease | undefined> {
+ 	if (process.env.PI_SKIP_VERSION_CHECK || process.env.PI_OFFLINE) return undefined;
+ 
+-	const response = await fetch(LATEST_VERSION_URL, {
++	// Support GitHub releases: PI_UPDATE_URL=https://github.com/user/repo
++	if (LATEST_VERSION_URL.startsWith("https://github.com/")) {
++		return getLatestReleaseFromGithub(LATEST_VERSION_URL, options);
++	}
++
++	// Default: check npm registry for custom package
++	return getLatestReleaseFromNpm(NPM_PACKAGE_NAME, options);
++}
++
++async function getLatestReleaseFromNpm(
++	packageName: string,
++	options: { timeoutMs?: number } = {},
++): Promise<LatestPiRelease | undefined> {
++	const registryUrl = process.env.PI_NPM_REGISTRY || "https://registry.npmjs.org";
++	const apiUrl = `${registryUrl}/${packageName}/latest`;
++
++	const response = await fetch(apiUrl, {
+ 		headers: {
+-			"User-Agent": getPiUserAgent(currentVersion),
+ 			accept: "application/json",
+ 		},
+ 		signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_VERSION_CHECK_TIMEOUT_MS),
+@@ -69,19 +86,62 @@ export async function getLatestPiRelease(
+ 	if (!response.ok) return undefined;
+ 
+ 	const data = (await response.json()) as {
+-		packageName?: unknown;
+ 		version?: unknown;
+-		note?: unknown;
+ 	};
+ 	if (typeof data.version !== "string" || !data.version.trim()) {
+ 		return undefined;
+ 	}
+-	const packageName =
+-		typeof data.packageName === "string" && data.packageName.trim() ? data.packageName.trim() : undefined;
+-	const note = typeof data.note === "string" && data.note.trim() ? data.note.trim() : undefined;
++
+ 	return {
+ 		version: data.version.trim(),
+ 		packageName,
++	};
++}
++
++async function getLatestReleaseFromGithub(
++	repoUrl: string,
++	options: { timeoutMs?: number } = {},
++): Promise<LatestPiRelease | undefined> {
++	// Extract owner/repo from URL
++	const match = repoUrl.match(/github\.com\/([^/]+\/[^/]+)/);
++	if (!match) return undefined;
++	const repo = match[1];
++
++	const apiUrl = `https://api.github.com/repos/${repo}/releases/latest`;
++	const headers: Record<string, string> = {
++		accept: "application/vnd.github+json",
++		"User-Agent": getPiUserAgent(""),
++	};
++	if (process.env.GITHUB_TOKEN) {
++		headers.authorization = `token ${process.env.GITHUB_TOKEN}`;
++	}
++
++	const response = await fetch(apiUrl, {
++		headers,
++		signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_VERSION_CHECK_TIMEOUT_MS),
++	});
++	if (!response.ok) return undefined;
++
++	const data = (await response.json()) as {
++		tag_name?: unknown;
++		body?: unknown;
++		assets?: Array<{ name: string; browser_download_url: string }>;
++	};
++
++	if (typeof data.tag_name !== "string") return undefined;
++	const version = data.tag_name.replace(/^v/, "");
++
++	// Find the tgz asset
++	const tgzAsset = data.assets?.find((a) => a.name.endsWith(".tgz"));
++	// Use the actual asset name as-is (npm pack uses package.json version)
++	// e.g., "earendil-works-pi-coding-agent-0.77.0" from "earendil-works-pi-coding-agent-0.77.0.tgz"
++	const packageName = tgzAsset?.name.replace(/\.tgz$/, "");
++
++	const note = typeof data.body === "string" ? data.body.slice(0, 500) : undefined;
++
++	return {
++		version,
++		packageName,
+ 		...(note ? { note } : {}),
+ 	};
+ }
